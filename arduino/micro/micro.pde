@@ -27,15 +27,23 @@ by Travis Howse <tjhowse@gmail.com>
 
 #define QUEUESIZE 512 // Bytes
 #define XMITSLOT 500 // Milliseconds
+
+//#define SECSERVER
 								 
 byte mac[] = {	0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 byte ip[] = { 192,168,1,177 };
+
 byte pri_server_ip[] = {192,168,1,100}; // HAL9002
-byte sec_server_ip[] = {192,168,1,50}; // Tinman
-aes256_context ctxt;
 Client pri_server(pri_server_ip, 5555);
+
+
+byte sec_server_ip[] = {192,168,1,50}; // Tinman
 Client sec_server(sec_server_ip, 5555);
-int i;
+
+aes256_context ctxt;
+
+
+int i,j;
 byte queue[QUEUESIZE];
 int xmit_cursor;
 int add_cursor;
@@ -43,7 +51,7 @@ unsigned long time;
 // Unsure if byte is enough (1B)
 byte msgcount;
 byte xmit_buffer[2];
-byte msgsize;
+int msgsize;
 
 byte key[] = {
 	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 
@@ -54,132 +62,133 @@ byte key[] = {
 	
 void setup()
 {
-	message testmessage;
 	Ethernet.begin(mac, ip);
 	Serial.begin(9600);
-	Serial.println("Connecting...");
+	Serial.println("Hello...");
 	
 	msgcount = 0;
+	xmit_cursor = 0;
+	add_cursor = 0;
 	
 	aes256_init(&ctxt, key);
 	
-	/*byte data[] = {
-		0x61, 0x73, 0x64, 0x66, 0x61, 0x73, 0x64, 0x66,
-		0x61, 0x73, 0x64, 0x66, 0x61, 0x73, 0x64, 0x66
-	};*/
-	byte data[] = "Hello this is a";
-	aes256_encrypt_ecb(&ctxt, data);
-	
-	
-	if (pri_server.connect()) {
-		Serial.println("connected");
-		//client.println("testing");
-		DUMP("Sending: ", i, data, sizeof(data));
-		//Serial.println((byte&)data);
-		//ETHDUMP(i, data, sizeof(data),client);
-		Serial.println(sizeof(data));
-		pri_server.write(data, sizeof(data));
-
-		//client.println((byte&)data);
-	}
-	
-	aes256_done(&ctxt);
-	
-	
-	testmessage.details = 0x00;
-	
-	testmessage.details = SETTYPE(testmessage.details,5);
-	testmessage.details = SETSIZE(testmessage.details,4);
-	
-	Serial.print("Whole: ");
-	Serial.println(testmessage.details, HEX);
-	Serial.print("Size: ");
-	Serial.println(GETSIZE(testmessage.details), HEX);
-	Serial.print("Type: ");
-	Serial.println(GETTYPE(testmessage.details), HEX);
 }
 
 void loop()
-{
- 
+{	
+	byte testmessage[4];
 	
+	testmessage[0] = 0x11;
+	testmessage[1] = 0x22;
+	testmessage[2] = 0x33;
+	testmessage[3] = 0x44;
+	
+	while (1)
+	{
+		enqueue_message(1, 4, testmessage);
+		Serial.println(add_cursor);
+		Serial.println(xmit_cursor);
+		xmit_time();
+	}
+ 
+	aes256_done(&ctxt);
 }
 
 void xmit_time()
 {
 	// This function connects to the server/s and sends as many messages as it can inside its time slot.
 
-	if (add_cursor == xmit_cursor) return;
+	if (!GETSIZE(queue[xmit_cursor])) return;
 	
 	if (!pri_server.connect())
+	{
 		Serial.println("Failed to connect to primary server.");
-	
+		return;
+	}
+#ifdef SECSERVER
 	if (!sec_server.connect())
 		Serial.println("Failed to connect to secondary server.");
-
+#endif
 	time = millis();
 
 	// If a really big message is last, this might overrun the time slot. No way to fix unless the time taken
 	// to send messages can be pre-calculated faster than actually sending the message.
-	while ((millis()-time) > XMITSLOT)
+	while (((millis()-time) < XMITSLOT) && GETSIZE(queue[xmit_cursor]))
+	{
+		Serial.println("Xmitting message");
 		xmit_message();
+	}
 		
 	pri_server.stop();
+#ifdef SECSERVER
 	sec_server.stop();
+#endif
 	
 }
 
 void xmit_message()
 {
 	// This function pops a message off the queue, encrypts it, sends it and moves the send cursor along.
+	prep_xmit_buffer();
 	
-	get_xmit_bytes();
-	
-	msgsize = GETSIZE(xmit_buffer[1]);
+	msgsize = (int)GETSIZE(xmit_buffer[1]);
+	Serial.print("msgsize: ");
+	Serial.println(msgsize,DEC);
 	aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	
 	if (pri_server.connected())
 		pri_server.write(xmit_buffer,2);
-	if (pri_server.connected())
-		pri_server.write(xmit_buffer,2);
+	if (sec_server.connected())
+		sec_server.write(xmit_buffer,2);
 	
-	for (i = 0; i < msgsize; i++)
+	for (int i = 0; i < (int)msgsize; i++)
 	{
-		get_xmit_bytes();
+		Serial.print("i: ");
+		Serial.println(i,DEC);
+		prep_xmit_buffer();
 		aes256_encrypt_ecb(&ctxt, xmit_buffer);
 		if (pri_server.connected())
 			pri_server.write(xmit_buffer,2);
-		if (pri_server.connected())
-			pri_server.write(xmit_buffer,2);
+		if (sec_server.connected())
+			sec_server.write(xmit_buffer,2);
 	}	
 
 }
 
-void get_xmit_bytes()
+void prep_xmit_buffer()
 {
 	xmit_buffer[0] = msgcount++;
 	xmit_buffer[1] = queue[xmit_cursor];
-	inc_cursor(xmit_cursor);
+	queue[xmit_cursor] = 0x00;
+	DUMP("Message to send: ", j, xmit_buffer, 2);
+	inc_cursor(&xmit_cursor);
+	Serial.print("xmit_cursor: ");
+	Serial.println(xmit_cursor);
 }
 
 void enqueue_message(byte type, byte size, byte* data)
-{
+{	
 	queue[add_cursor] = SETTYPE(queue[add_cursor],type);
 	queue[add_cursor] = SETSIZE(queue[add_cursor],size);
-	inc_cursor(add_cursor);
+	inc_cursor(&add_cursor);
+	Serial.print("add_cursor: ");
+	Serial.println(add_cursor);
 	
-	for (i = 0; i < size; i++)
+	for (int i = 0; i < size; i++)
 	{
 		queue[add_cursor] = data[i];
-		inc_cursor(add_cursor);
+		inc_cursor(&add_cursor);
+		Serial.print("add_cursor: ");
+		Serial.println(add_cursor);
 	}
+	Serial.println("Message enqueued.");
 }
 
-void inc_cursor(int cursor)
+void inc_cursor(int* cursor)
 {
 	// Moves the add cursor through the send queue, wrapping to the start properly if need be.
-	if (++cursor >= QUEUESIZE)
+	if (++(*cursor) >= QUEUESIZE)
 	{
-		cursor = 0;
+		(*cursor) = 0;
 	}
 }
