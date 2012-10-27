@@ -50,7 +50,7 @@ int add_cursor;
 unsigned long time;
 // Unsure if byte is enough (1B)
 byte msgcount;
-byte xmit_buffer[2];
+byte xmit_buffer[16];
 int msgsize;
 
 byte key[] = {
@@ -129,41 +129,32 @@ void xmit_time()
 void xmit_message()
 {
 	// This function pops a message off the queue, encrypts it, sends it and moves the send cursor along.
-	prep_xmit_buffer();
+	pad_xmit_buffer();
 	
-	msgsize = (int)GETSIZE(xmit_buffer[1]);
+	msgsize = (int)GETSIZE(queue[xmit_cursor]);
 	Serial.print("msgsize: ");
 	Serial.println(msgsize,DEC);
-	aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	
-	if (pri_server.connected())
-		pri_server.write(xmit_buffer,2);
-	if (sec_server.connected())
-		sec_server.write(xmit_buffer,2);
-	
-	for (int i = 0; i < (int)msgsize; i++)
+	xmit_buffer[0] = msgcount++;
+
+	for (int i = 1; i < (msgsize+2); i++)
 	{
-		Serial.print("i: ");
-		Serial.println(i,DEC);
-		prep_xmit_buffer();
-		aes256_encrypt_ecb(&ctxt, xmit_buffer);
-		if (pri_server.connected())
-			pri_server.write(xmit_buffer,2);
-		if (sec_server.connected())
-			sec_server.write(xmit_buffer,2);
+		xmit_buffer[i] = queue[xmit_cursor];
+		inc_cursor(&xmit_cursor);
 	}	
+	
+	aes256_encrypt_ecb(&ctxt, xmit_buffer);
+	if (pri_server.connected())
+		pri_server.write(xmit_buffer,16);
+	if (sec_server.connected())
+		sec_server.write(xmit_buffer,16);
 
 }
 
-void prep_xmit_buffer()
+void pad_xmit_buffer()
 {
-	xmit_buffer[0] = msgcount++;
-	xmit_buffer[1] = queue[xmit_cursor];
-	queue[xmit_cursor] = 0x00;
-	DUMP("Message to send: ", j, xmit_buffer, 2);
-	inc_cursor(&xmit_cursor);
-	Serial.print("xmit_cursor: ");
-	Serial.println(xmit_cursor);
+	for (int i = 0; i < 16; i++)
+		xmit_buffer[i] = 0x00;
 }
 
 void enqueue_message(byte type, byte size, byte* data)
