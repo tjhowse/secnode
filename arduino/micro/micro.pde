@@ -14,6 +14,7 @@ by Travis Howse <tjhowse@gmail.com>
 #include <WProgram.h>
 #include "aes256.h"
 #include "secnode.h"
+#include <utility/w5100.h> // For the ethernet library.
 
 #define DUMP(str, i, buf, sz) { Serial.println(str); \
 															 for(i=0; i<(sz); ++i) { if(buf[i]<0x10) Serial.print('0'); Serial.print(buf[i], HEX); } \
@@ -27,6 +28,7 @@ by Travis Howse <tjhowse@gmail.com>
 
 #define QUEUESIZE 512 // Bytes
 #define XMITSLOT 500 // Milliseconds
+
 
 //#define SECSERVER
 								 
@@ -63,6 +65,8 @@ byte key[] = {
 void setup()
 {
 	Ethernet.begin(mac, ip);
+	W5100.setRetransmissionTime(0x07D0);
+	W5100.setRetransmissionCount(3);
 	Serial.begin(9600);
 	Serial.println("Hello...");
 	
@@ -140,6 +144,7 @@ void xmit_message()
 	for (int i = 1; i < (msgsize+2); i++)
 	{
 		xmit_buffer[i] = queue[xmit_cursor];
+		queue[xmit_cursor] = 0x00;
 		inc_cursor(&xmit_cursor);
 	}	
 	
@@ -179,7 +184,5 @@ void inc_cursor(int* cursor)
 {
 	// Moves the add cursor through the send queue, wrapping to the start properly if need be.
 	if (++(*cursor) >= QUEUESIZE)
-	{
 		(*cursor) = 0;
-	}
 }
