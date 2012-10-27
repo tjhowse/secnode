@@ -13,6 +13,16 @@ from Crypto.Cipher import AES
 import SocketServer
 import sys
 
+def toHex(s):
+    lst = []
+    for ch in s:
+        hv = hex(ord(ch)).replace('0x', '')
+        if len(hv) == 1:
+            hv = '0'+hv
+        lst.append(hv)
+    
+    return reduce(lambda x,y:x+y, lst)
+
 class MyTCPHandler(SocketServer.BaseRequestHandler):
 	"""
 	The RequestHandler class for our server.
@@ -25,14 +35,13 @@ class MyTCPHandler(SocketServer.BaseRequestHandler):
 
 	def handle(self):
 		# self.request is the TCP socket connected to the client
-		self.data = self.request.recv(1024).strip()
+		self.data = self.request.recv(16).strip()
 
 		print "{} wrote:".format(self.client_address[0])
-		print self.data
 		print sys.getsizeof(self.data)
-		obj2 = AES.new('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AES.MODE_ECB)
-		
-		print obj2.decrypt(self.data)
+		if (sys.getsizeof(self.data) == 37):
+			obj2 = AES.new('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AES.MODE_ECB)
+			print toHex(obj2.decrypt(self.data))
 		
 		# just send back the same data, but upper-cased
 		#self.request.sendall(self.data.upper())
