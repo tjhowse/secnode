@@ -17,8 +17,8 @@ by Travis Howse <tjhowse@gmail.com>
 #include <utility/w5100.h> // For the ethernet library.
 
 #define DUMP(str, i, buf, sz) { Serial.println(str); \
-															 for(i=0; i<(sz); ++i) { if(buf[i]<0x10) Serial.print('0'); Serial.print(buf[i], HEX); } \
-															 Serial.println(); }
+								for(i=0; i<(sz); ++i) { if(buf[i]<0x10) Serial.print('0'); Serial.print(buf[i], HEX); } \
+								Serial.println(); }
 
 #define GETSIZE(details) details & 0x0F
 #define GETTYPE(details) (details & 0xF0)>>4
@@ -92,6 +92,10 @@ void loop()
 		enqueue_message(1, 4, testmessage);
 		Serial.println(add_cursor);
 		Serial.println(xmit_cursor);
+		
+		// TODO Send a heartbeat to the server/s. It might respond with commands,
+		// add any commands to the command queue.
+		// TODO Act on commands.
 		xmit_time();
 	}
  
@@ -133,7 +137,7 @@ void xmit_time()
 void xmit_message()
 {
 	// This function pops a message off the queue, encrypts it, sends it and moves the send cursor along.
-	pad_xmit_buffer();
+	zero_xmit_buffer();
 	
 	msgsize = (int)GETSIZE(queue[xmit_cursor]);
 	Serial.print("msgsize: ");
@@ -144,9 +148,12 @@ void xmit_message()
 	for (int i = 1; i < (msgsize+2); i++)
 	{
 		xmit_buffer[i] = queue[xmit_cursor];
-		queue[xmit_cursor] = 0x00;
+		queue[xmit_cursor] = 0x00; // Consider not doing this until the message is ack'd
 		inc_cursor(&xmit_cursor);
-	}	
+	}
+	
+	// Set the last byte to be an XOR checksum.
+	append_checksum(xmit_buffer);
 	
 	aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	if (pri_server.connected())
@@ -154,9 +161,18 @@ void xmit_message()
 	if (sec_server.connected())
 		sec_server.write(xmit_buffer,16);
 
+	// TODO Here, wait for a limited period of time for the server to send back an ack. If no ack, move xmit_cursor
+	// back by size+1, or block zero_xmit_buffer() from clearing the unack'd message, and don't read a new one in.
 }
 
-void pad_xmit_buffer()
+void append_checksum(byte* buffer)
+{
+	// Not sure if this is a great checksum. It should be good enough.
+	for (int i = 0; i < 15; i++)
+		buffer[15] ^= buffer[i];
+}
+
+void zero_xmit_buffer()
 {
 	for (int i = 0; i < 16; i++)
 		xmit_buffer[i] = 0x00;
@@ -164,18 +180,19 @@ void pad_xmit_buffer()
 
 void enqueue_message(byte type, byte size, byte* data)
 {	
+	if (size > 13)
+	{
+		Serial.println("Overlarge message not enqueued.");
+		return;
+	}
 	queue[add_cursor] = SETTYPE(queue[add_cursor],type);
 	queue[add_cursor] = SETSIZE(queue[add_cursor],size);
 	inc_cursor(&add_cursor);
-	Serial.print("add_cursor: ");
-	Serial.println(add_cursor);
 	
 	for (int i = 0; i < size; i++)
 	{
 		queue[add_cursor] = data[i];
 		inc_cursor(&add_cursor);
-		Serial.print("add_cursor: ");
-		Serial.println(add_cursor);
 	}
 	Serial.println("Message enqueued.");
 }
