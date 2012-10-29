@@ -31,18 +31,27 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 
 	def handle(self):
 		data = self.request.recv(16)
-		cur_thread = threading.current_thread()
-		if (sys.getsizeof(data) == 37):
-			obj2 = AES.new('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AES.MODE_ECB)
-			decrypted = list(obj2.decrypt(data))
-			#decrypted[5] = 'a'
-			decrypted = "".join(decrypted)			
-			
-			print toHex(decrypted)
-			check_checksum(decrypted)
-			#TODO Calculate the checksum, check it, if it passes, send back an ack.
-		else:
-			print "Lost a message! Very bad!"
+		while data != '':
+			cur_thread = threading.current_thread()
+			if (sys.getsizeof(data) == 37):
+				obj2 = AES.new('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AES.MODE_ECB)
+				raw = obj2.decrypt(data)
+				decrypted = list(raw)
+				decrypted[5] = 'a'
+				decrypted = "".join(decrypted)			
+				
+				print toHex(decrypted)
+				if check_checksum(raw):
+					#bytearray(raw)[5] = 0xBB
+					self.request.sendall(obj2.encrypt(raw))
+					#self.request.sendall(obj2.encrypt(list(decrypted)))
+				else:
+					print "Hark! A checksum failed!"
+				
+			else:
+				print "Lost a message! Very bad!"
+			data = self.request.recv(16)
+	
 			
 		#response = "{}: {}".format(cur_thread.name, data)
 		#self.request.sendall(response)
