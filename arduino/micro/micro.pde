@@ -54,6 +54,7 @@ unsigned long time;
 // Unsure if byte is enough (1B)
 byte msgcount;
 byte xmit_buffer[16];
+byte recv_buffer[16];
 int msgsize;
 
 byte key[] = {
@@ -76,6 +77,7 @@ void setup()
 	add_cursor = 0;
 	
 	aes256_init(&ctxt, key);
+	zero_xmit_buffer();
 	
 }
 
@@ -91,8 +93,8 @@ void loop()
 	while (1)
 	{
 		enqueue_message(1, 4, testmessage);
-		Serial.println(add_cursor);
-		Serial.println(xmit_cursor);
+		//Serial.println(add_cursor);
+		//Serial.println(xmit_cursor);
 		
 		// TODO Send a heartbeat to the server/s. It might respond with commands,
 		// add any commands to the command queue.
@@ -107,7 +109,7 @@ void xmit_time()
 {
 	// This function connects to the server/s and sends as many messages as it can inside its time slot.
 
-	if (!GETSIZE(queue[xmit_cursor])) return;
+	if (!GETSIZE(queue[xmit_cursor]) && !check_buffer_empty(xmit_buffer)) return;
 	
 	if (!pri_server.connect())
 	{
@@ -141,7 +143,7 @@ void xmit_message()
 	// This function pops a message off the queue, encrypts it, sends it and moves the send cursor along.
 	
 	// If the xmit buffer is empty, the previous message was successfully sent.
-	if (!xmit_buffer[1])
+	if (!check_buffer_empty(xmit_buffer))
 	{
 		zero_xmit_buffer();
 		
@@ -162,6 +164,10 @@ void xmit_message()
 		aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	}
 	
+	/*aes256_decrypt_ecb(&ctxt, xmit_buffer);
+	DUMP("Sending: ", i, xmit_buffer, 16);
+	aes256_encrypt_ecb(&ctxt, xmit_buffer);*/
+	
 	if (pri_server.connected())
 		pri_server.write(xmit_buffer,16);
 	if (sec_server.connected())
@@ -174,12 +180,39 @@ void xmit_message()
 	while (((millis()-acktime) < ACKWAIT) && !pri_server.available())
 	{
 		// Wait for data to become available on the receive end of this client connection, or time out.
-		// TODO Sleep a bit.
+		delay(10);
 	}
+	/*Serial.print("Time: ");
+	Serial.println(millis()-acktime);
+	Serial.print("Available: ");
+	Serial.println(pri_server.available());*/
 	
-	// TODO if the ACK checks out, zero_xmit_buffer(), if not, don't.
-
+	// If it left the above loop because it got a response...
+	if (pri_server.available())
+	{
+		for (i = 0; i < 16; i++)
+		{
+			while ((recv_buffer[i] = pri_server.read()) == -1) {}
+		}
+		aes256_decrypt_ecb(&ctxt, recv_buffer);
+		if (check_checksum(recv_buffer))
+		{
+			Serial.println("Ack checksum fail. Sending again.");
+			DUMP("Received: ", i, recv_buffer, 16);
+		} else {
+			DUMP("Received: ", i, recv_buffer, 16);
+			zero_xmit_buffer();
+		}
+	} else {
+		//Serial.print("Didn't receive an ack for message: ");
+		aes256_decrypt_ecb(&ctxt, xmit_buffer);
+		DUMP("Didn't receive an ack for message: ", i, xmit_buffer, 16);
+		aes256_encrypt_ecb(&ctxt, xmit_buffer);
+	}
+	//
+	//Serial.println();	
 	
+	// TODO if the ACK checks out, zero_xmit_buffer(), if not, don't.	
 }
 
 void append_checksum(byte* buffer)
@@ -187,6 +220,22 @@ void append_checksum(byte* buffer)
 	// Not sure if this is a great checksum. It should be good enough.
 	for (int i = 0; i < 15; i++)
 		buffer[15] ^= buffer[i];
+}
+
+bool check_checksum(byte* buffer)
+{
+	for (int i = 0; i < 15; i++)
+		buffer[15] ^= buffer[i];
+		
+	return (bool)buffer[15];
+}
+
+bool check_buffer_empty(byte* buffer)
+{
+	for (int i = 0; i < 15; i++)
+		if ((int)buffer[i]) return 1;
+	
+	return 0;
 }
 
 void zero_xmit_buffer()
