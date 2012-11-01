@@ -15,6 +15,10 @@ import sys
 import time
 import socket
 import threading
+import sqlite3
+
+queue = []
+xmitslot = 500 #milliseconds
 
 def toHex(s):
 	lst = []
@@ -37,7 +41,6 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 				obj2 = AES.new('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AES.MODE_ECB)
 				raw = obj2.decrypt(data)
 				decrypted = list(raw)
-				decrypted[5] = 'a'
 				decrypted = "".join(decrypted)			
 				
 				print toHex(decrypted)
@@ -72,9 +75,26 @@ def check_checksum(message):
 		
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 	pass
-
+	
+	
+def init_sqldb(db):
+	db.execute('CREATE TABLE IF NOT EXISTS nodes (id real, tag text, description text, cryptkey text, ip text, status text, zone text)')
+	db.execute('CREATE TABLE IF NOT EXISTS msgqueue (id real, message text)')
+	
+	db.execute('INSERT INTO nodes VALUES (1, "TEST", "TEST NODE", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "192.168.1.177", "FINE, I GUESS.", "OUTSIDE")')
+	
+	db.commit()
+	# TODO Load a nodes list from a CSV file, populate the nodes DB.
+	
+def enqueue_message(node_id, message):
+	global sqldb
+	
+	t = (node_id, message)
+	
+	sqldb.execute('INSERT INTO msgqueue VALUES (?,?)',t)
+	
 if __name__ == "__main__":
-	HOST, PORT = "192.168.1.100", 5555
+	HOST, PORT = "192.168.1.151", 5555
 
 	server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
 	ip, port = server.server_address
@@ -86,5 +106,13 @@ if __name__ == "__main__":
 	server_thread.daemon = True
 	server_thread.start()
 	
+	# TODO: Initialise SQL database
+	sqldb = sqlite3.connect('secnode.db')
+	init_sqldb(sqldb)
+	
 	while 1:
 		time.sleep(1)
+		enqueue_message(1, "111111")
+		
+
+	
