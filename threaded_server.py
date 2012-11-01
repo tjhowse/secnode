@@ -60,6 +60,12 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 		#response = "{}: {}".format(cur_thread.name, data)
 		#self.request.sendall(response)
 
+def append_checksum(message);
+	parity = 0
+	for byte in bytearray(message):
+		parity = parity ^ byte
+	
+		
 def check_checksum(message):
 	parity = 0
 	for byte in bytearray(message):

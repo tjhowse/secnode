@@ -36,15 +36,13 @@ by Travis Howse <tjhowse@gmail.com>
 byte mac[] = {	0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 byte ip[] = { 192,168,1,177 };
 
-byte pri_server_ip[] = {192,168,1,100}; // HAL9002
+byte pri_server_ip[] = {192,168,1,151}; // HAL9002
 Client pri_server(pri_server_ip, 5555);
-
 
 byte sec_server_ip[] = {192,168,1,50}; // Tinman
 Client sec_server(sec_server_ip, 5555);
 
 aes256_context ctxt;
-
 
 int i,j;
 byte queue[QUEUESIZE];
@@ -93,13 +91,22 @@ void loop()
 	while (1)
 	{
 		enqueue_message(1, 4, testmessage);
+		enqueue_message(1, 4, testmessage);
 		//Serial.println(add_cursor);
 		//Serial.println(xmit_cursor);
 		
 		// TODO Send a heartbeat to the server/s. It might respond with commands,
 		// add any commands to the command queue.
+		// Consider just enqueueing a message once every cycle to act as a heartbeat.
 		// TODO Act on commands.
+		
 		xmit_time();
+		
+		if (get_buffer_util() > 10)
+		{
+			Serial.print("Buffer filling: ");
+			Serial.println(get_buffer_util());
+		}
 	}
  
 	aes256_done(&ctxt);
@@ -126,7 +133,6 @@ void xmit_time()
 	// to send messages can be pre-calculated faster than actually sending the message.
 	while (((millis()-time) < XMITSLOT) && GETSIZE(queue[xmit_cursor]))
 	{
-		Serial.println("Xmitting message");
 		xmit_message();
 	}
 		
@@ -148,8 +154,8 @@ void xmit_message()
 		zero_xmit_buffer();
 		
 		msgsize = (int)GETSIZE(queue[xmit_cursor]);
-		Serial.print("msgsize: ");
-		Serial.println(msgsize,DEC);
+		//Serial.print("msgsize: ");
+		//Serial.println(msgsize,DEC);
 		
 		xmit_buffer[0] = msgcount++;
 
@@ -161,6 +167,8 @@ void xmit_message()
 		}
 		
 		append_checksum(xmit_buffer);
+		
+		// TODO add a random byte at the end.
 		aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	}
 	
@@ -200,7 +208,8 @@ void xmit_message()
 			Serial.println("Ack checksum fail. Sending again.");
 			DUMP("Received: ", i, recv_buffer, 16);
 		} else {
-			DUMP("Received: ", i, recv_buffer, 16);
+			//DUMP("Received: ", i, recv_buffer, 16);
+			// Received reply, checksum passed.
 			zero_xmit_buffer();
 		}
 	} else {
@@ -209,10 +218,12 @@ void xmit_message()
 		DUMP("Didn't receive an ack for message: ", i, xmit_buffer, 16);
 		aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	}
-	//
-	//Serial.println();	
-	
-	// TODO if the ACK checks out, zero_xmit_buffer(), if not, don't.	
+}
+
+int get_buffer_util()
+{
+	if (add_cursor < xmit_cursor) return (QUEUESIZE-xmit_cursor)+add_cursor;
+	return add_cursor-xmit_cursor;
 }
 
 void append_checksum(byte* buffer)
@@ -260,7 +271,7 @@ void enqueue_message(byte type, byte size, byte* data)
 		queue[add_cursor] = data[i];
 		inc_cursor(&add_cursor);
 	}
-	Serial.println("Message enqueued.");
+	//Serial.println("Message enqueued.");
 }
 
 void inc_cursor(int* cursor)
