@@ -165,16 +165,10 @@ void xmit_message()
 			queue[xmit_cursor] = 0x00; // Consider not doing this until the message is ack'd
 			inc_cursor(&xmit_cursor);
 		}
-		
-		append_checksum(xmit_buffer);
-		
-		// TODO add a random byte at the end.
+		// TODO add a random byte at the second-from-the-end.
+		append_checksum(xmit_buffer);		
 		aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	}
-	
-	/*aes256_decrypt_ecb(&ctxt, xmit_buffer);
-	DUMP("Sending: ", i, xmit_buffer, 16);
-	aes256_encrypt_ecb(&ctxt, xmit_buffer);*/
 	
 	if (pri_server.connected())
 		pri_server.write(xmit_buffer,16);
@@ -183,17 +177,11 @@ void xmit_message()
 		
 	acktime = millis();
 
-	// If a really big message is last, this might overrun the time slot. No way to fix unless the time taken
-	// to send messages can be pre-calculated faster than actually sending the message.
 	while (((millis()-acktime) < ACKWAIT) && !pri_server.available())
 	{
 		// Wait for data to become available on the receive end of this client connection, or time out.
 		delay(10);
 	}
-	/*Serial.print("Time: ");
-	Serial.println(millis()-acktime);
-	Serial.print("Available: ");
-	Serial.println(pri_server.available());*/
 	
 	// If it left the above loop because it got a response...
 	if (pri_server.available())
