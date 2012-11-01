@@ -42,12 +42,13 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 				raw = obj2.decrypt(data)
 				decrypted = list(raw)
 				decrypted = "".join(decrypted)			
-				
+				# TODO parse message, update database with statuses from node
 				print toHex(decrypted)
 				if check_checksum(raw):
 					#bytearray(raw)[5] = 0xBB
+					# TODO Read from msgqueue and send off a message relevant to this node
 					self.request.sendall(obj2.encrypt(raw))
-					#self.request.sendall(obj2.encrypt(list(decrypted)))
+
 				else:
 					print "Hark! A checksum failed!"
 				
@@ -72,14 +73,22 @@ def check_checksum(message):
 	if parity == 0:
 		return True
 	return False
-		
+
+def append_checksum(message):
+	message = bytearray(message)
+	message[15] = 0
+	for byte in message:
+		message[15] = message[15] ^ byte
+	return message
+	
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 	pass
 	
 	
 def init_sqldb(db):
-	db.execute('CREATE TABLE IF NOT EXISTS nodes (id real, tag text, description text, cryptkey text, ip text, status text, zone text)')
-	db.execute('CREATE TABLE IF NOT EXISTS msgqueue (id real, message text)')
+	db.execute('CREATE TABLE IF NOT EXISTS nodes (nodeid real, tag text, description text, cryptkey text, ip text, status text, zone text)')
+	db.execute('CREATE TABLE IF NOT EXISTS msgqueue (msgid real, nodeid real, message text)')
+	db.execute('CREATE TABLE IF NOT EXISTS nodestatus (nodeid real, var real, state real')
 	
 	db.execute('INSERT INTO nodes VALUES (1, "TEST", "TEST NODE", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "192.168.1.177", "FINE, I GUESS.", "OUTSIDE")')
 	
@@ -87,11 +96,10 @@ def init_sqldb(db):
 	# TODO Load a nodes list from a CSV file, populate the nodes DB.
 	
 def enqueue_message(node_id, message):
-	global sqldb
-	
-	t = (node_id, message)
-	
+	global sqldb	
+	t = (node_id, message)	
 	sqldb.execute('INSERT INTO msgqueue VALUES (?,?)',t)
+	sqldb.commit()
 	
 if __name__ == "__main__":
 	HOST, PORT = "192.168.1.151", 5555
@@ -106,7 +114,6 @@ if __name__ == "__main__":
 	server_thread.daemon = True
 	server_thread.start()
 	
-	# TODO: Initialise SQL database
 	sqldb = sqlite3.connect('secnode.db')
 	init_sqldb(sqldb)
 	
