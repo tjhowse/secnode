@@ -26,7 +26,7 @@ by Travis Howse <tjhowse@gmail.com>
 #define SETSIZE(details,size) (details & 0xF0) | size
 #define SETTYPE(details,type) (details & 0x0F) | (type << 4)
 
-#define QUEUESIZE 512 // Bytes
+#define QUEUESIZE 64 // Bytes
 #define XMITSLOT 500 // Milliseconds
 #define ACKWAIT 200 // Milliseconds
 
@@ -36,7 +36,7 @@ by Travis Howse <tjhowse@gmail.com>
 byte mac[] = {	0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 byte ip[] = { 192,168,1,177 };
 
-byte pri_server_ip[] = {192,168,1,151}; // HAL9002
+byte pri_server_ip[] = {192,168,1,100}; // HAL9002
 Client pri_server(pri_server_ip, 5555);
 
 byte sec_server_ip[] = {192,168,1,50}; // Tinman
@@ -91,7 +91,7 @@ void loop()
 	while (1)
 	{
 		enqueue_message(1, 4, testmessage);
-		enqueue_message(1, 4, testmessage);
+		enqueue_message(1, 3, testmessage);
 		//Serial.println(add_cursor);
 		//Serial.println(xmit_cursor);
 		
@@ -154,14 +154,14 @@ void xmit_message()
 		zero_xmit_buffer();
 		
 		msgsize = (int)GETSIZE(queue[xmit_cursor]);
-		//Serial.print("msgsize: ");
-		//Serial.println(msgsize,DEC);
+		Serial.print("msgsize: ");
+		Serial.println(msgsize,DEC);
 		
 		xmit_buffer[0] = msgcount++;
 
-		for (int i = 1; i < (msgsize+2); i++)
+		for (int i = 0; i <= msgsize; i++)
 		{
-			xmit_buffer[i] = queue[xmit_cursor];
+			xmit_buffer[i+1] = queue[xmit_cursor];
 			queue[xmit_cursor] = 0x00; // Consider not doing this until the message is ack'd
 			inc_cursor(&xmit_cursor);
 		}
@@ -171,7 +171,14 @@ void xmit_message()
 	}
 	
 	if (pri_server.connected())
+	{
+		
+		aes256_decrypt_ecb(&ctxt, xmit_buffer);
+		DUMP("Transmitting: ", i, xmit_buffer, 16);
+		aes256_encrypt_ecb(&ctxt, xmit_buffer);
+		
 		pri_server.write(xmit_buffer,16);
+	}
 	if (sec_server.connected())
 		sec_server.write(xmit_buffer,16);
 		
@@ -186,7 +193,7 @@ void xmit_message()
 	// If it left the above loop because it got a response...
 	if (pri_server.available())
 	{
-		for (i = 0; i < 16; i++)
+		for (int i = 0; i < 16; i++)
 		{
 			while ((recv_buffer[i] = pri_server.read()) == -1) {}
 		}
@@ -198,6 +205,8 @@ void xmit_message()
 		} else {
 			//DUMP("Received: ", i, recv_buffer, 16);
 			// Received reply, checksum passed.
+			// TODO If a "I have news for you" flag comes in from the server, enqueue another heartbeat packet
+			// to allow the server to send another message.
 			zero_xmit_buffer();
 		}
 	} else {
@@ -231,7 +240,7 @@ bool check_checksum(byte* buffer)
 
 bool check_buffer_empty(byte* buffer)
 {
-	for (int i = 0; i < 15; i++)
+	for (int i = 0; i <= 15; i++)
 		if ((int)buffer[i]) return 1;
 	
 	return 0;
@@ -253,18 +262,40 @@ void enqueue_message(byte type, byte size, byte* data)
 	queue[add_cursor] = SETTYPE(queue[add_cursor],type);
 	queue[add_cursor] = SETSIZE(queue[add_cursor],size);
 	inc_cursor(&add_cursor);
+	check_overrun();
 	
 	for (int i = 0; i < size; i++)
 	{
 		queue[add_cursor] = data[i];
 		inc_cursor(&add_cursor);
+		check_overrun();
 	}
 	//Serial.println("Message enqueued.");
+}
+
+void check_overrun()
+{
+	if (add_cursor == xmit_cursor)
+	{
+		// Uh-oh. Our buffer has filled. Let's move the xmit_cursor along to the start of the oldest message.
+		Serial.println((int)GETSIZE(queue[add_cursor]));
+		for (int j = 0; j < (int)GETSIZE(queue[add_cursor]); j++)
+		{
+			inc_cursor(&xmit_cursor);
+		}
+	}
 }
 
 void inc_cursor(int* cursor)
 {
 	// Moves the add cursor through the send queue, wrapping to the start properly if need be.
-	if (++(*cursor) >= QUEUESIZE)
+	if (++(*cursor) > QUEUESIZE)
 		(*cursor) = 0;
+}
+
+int peek_cursor(int* cursor)
+{
+	if (((*cursor)+1) > QUEUESIZE)
+		return 0;
+	return ((*cursor)+1);	
 }
