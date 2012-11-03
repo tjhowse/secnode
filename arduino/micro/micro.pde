@@ -108,24 +108,9 @@ void loop()
 			Serial.println(get_buffer_util());
 
 		}
-		DUMP("Queue: ", j, queue, 64);
-		for (int i = 0; i < 64; i++)
-		{
-			if ((xmit_cursor == i) && (add_cursor == i))
-			{
-				Serial.print("BB");
-			} else if (add_cursor == i)
-			{
-				Serial.print("AA");
-			} else if (xmit_cursor == i)
-			{
-				Serial.print("XX");
-			} else {
-				Serial.print("__");
-			}
-		}
-		Serial.println("");
-		/*Serial.print("xmit_cursor: ");
+		
+		/*Serial.println("");
+		Serial.print("xmit_cursor: ");
 		Serial.println(xmit_cursor,DEC);
 		Serial.print("add_cursor: ");
 		Serial.println(add_cursor,DEC);*/
@@ -137,9 +122,9 @@ void loop()
 void xmit_time()
 {
 	// This function connects to the server/s and sends as many messages as it can inside its time slot.
-	Serial.println("Checking to see if transmit is required...");
+	//Serial.println("Checking to see if transmit is required...");
 	if (((int)GETSIZE(queue[xmit_cursor]) == 0) && !check_buffer_empty(xmit_buffer)) return;
-	Serial.println("Yep! Transmit is required...");
+	//Serial.println("Yep! Transmit is required...");
 	if (!pri_server.connect())
 	{
 		Serial.println("Failed to connect to primary server.");
@@ -157,7 +142,7 @@ void xmit_time()
 	time = millis();
 	while (((millis()-time) < XMITSLOT) && ((int)GETSIZE(queue[xmit_cursor]) != 0))
 	{
-		Serial.println((int)GETSIZE(queue[xmit_cursor]));
+		//Serial.println((int)GETSIZE(queue[xmit_cursor]));
 		xmit_message();
 	}
 		
@@ -179,15 +164,13 @@ void xmit_message()
 		zero_xmit_buffer();
 		
 		msgsize = (int)GETSIZE(queue[xmit_cursor]);
-		Serial.print("msgsize: ");
-		Serial.println(msgsize,DEC);
 		
 		xmit_buffer[0] = msgcount++;
 
 		for (int i = 0; i <= msgsize; i++)
 		{
 			xmit_buffer[i+1] = queue[xmit_cursor];
-			DUMP("Enqueueing byte: ", j, xmit_buffer, 16);
+			//DUMP("Enqueueing byte: ", j, xmit_buffer, 16);
 			queue[xmit_cursor] = 0x00; // Consider not doing this until the message is ack'd
 			inc_cursor(&xmit_cursor);
 		}
@@ -199,9 +182,9 @@ void xmit_message()
 	if (pri_server.connected())
 	{
 		
-		aes256_decrypt_ecb(&ctxt, xmit_buffer);
+		/*aes256_decrypt_ecb(&ctxt, xmit_buffer);
 		DUMP("Transmitting: ", i, xmit_buffer, 16);
-		aes256_encrypt_ecb(&ctxt, xmit_buffer);
+		aes256_encrypt_ecb(&ctxt, xmit_buffer);*/
 		
 		pri_server.write(xmit_buffer,16);
 	}
@@ -240,6 +223,26 @@ void xmit_message()
 		aes256_decrypt_ecb(&ctxt, xmit_buffer);
 		DUMP("Didn't receive an ack for message: ", i, xmit_buffer, 16);
 		aes256_encrypt_ecb(&ctxt, xmit_buffer);
+	}
+}
+
+void dump_queue()
+{
+	DUMP("Queue: ", j, queue, 64);
+	for (int i = 0; i < 64; i++)
+	{
+		if ((xmit_cursor == i) && (add_cursor == i))
+		{
+			Serial.print("BB");
+		} else if (add_cursor == i)
+		{
+			Serial.print("AA");
+		} else if (xmit_cursor == i)
+		{
+			Serial.print("XX");
+		} else {
+			Serial.print("__");
+		}
 	}
 }
 
@@ -298,7 +301,7 @@ void enqueue_message(byte type, byte size, byte* data)
 		inc_cursor(&add_cursor);
 		check_overrun();
 	}
-	Serial.println("Message enqueued.");
+	//Serial.println("Message enqueued.");
 }
 
 void check_overrun()
@@ -306,8 +309,8 @@ void check_overrun()
 	if (add_cursor == xmit_cursor)
 	{
 		// Uh-oh. Our buffer has filled. Let's move the xmit_cursor along to the start of the oldest message.
-		Serial.print("Buffer overrun, size of next message: ");
-		Serial.println((int)GETSIZE(queue[xmit_cursor]));\
+		//Serial.print("Buffer overrun, size of next message: ");
+		//Serial.println((int)GETSIZE(queue[xmit_cursor]));
 		if ((int)GETSIZE(queue[xmit_cursor]))
 		{
 			for (int j = 0; j < ((int)GETSIZE(queue[add_cursor])); j++)
@@ -324,8 +327,6 @@ void inc_cursor(int* cursor)
 	// Moves the add cursor through the send queue, wrapping to the start properly if need be.
 	if ((++(*cursor)) >= QUEUESIZE)
 		(*cursor) = 0;
-	Serial.print("inc_cursor: ");
-	Serial.println((*cursor));
 }
 
 int peek_cursor(int* cursor)
