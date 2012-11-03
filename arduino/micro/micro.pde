@@ -20,11 +20,11 @@ by Travis Howse <tjhowse@gmail.com>
 								for(i=0; i<(sz); ++i) { if(buf[i]<0x10) Serial.print('0'); Serial.print(buf[i], HEX); } \
 								Serial.println(); }
 
-#define GETSIZE(details) details & 0x0F
-#define GETTYPE(details) (details & 0xF0)>>4
+#define GETSIZE(details) (details & 0x0F)
+#define GETTYPE(details) ((details & 0xF0)>>4)
 
-#define SETSIZE(details,size) (details & 0xF0) | size
-#define SETTYPE(details,type) (details & 0x0F) | (type << 4)
+#define SETSIZE(details,size) ((details & 0xF0) | size)
+#define SETTYPE(details,type) ((details & 0x0F) | (type << 4))
 
 #define QUEUESIZE 64 // Bytes
 #define XMITSLOT 500 // Milliseconds
@@ -106,7 +106,29 @@ void loop()
 		{
 			Serial.print("Buffer filling: ");
 			Serial.println(get_buffer_util());
+
 		}
+		DUMP("Queue: ", j, queue, 64);
+		for (int i = 0; i < 64; i++)
+		{
+			if ((xmit_cursor == i) && (add_cursor == i))
+			{
+				Serial.print("BB");
+			} else if (add_cursor == i)
+			{
+				Serial.print("AA");
+			} else if (xmit_cursor == i)
+			{
+				Serial.print("XX");
+			} else {
+				Serial.print("__");
+			}
+		}
+		Serial.println("");
+		/*Serial.print("xmit_cursor: ");
+		Serial.println(xmit_cursor,DEC);
+		Serial.print("add_cursor: ");
+		Serial.println(add_cursor,DEC);*/
 	}
  
 	aes256_done(&ctxt);
@@ -115,9 +137,9 @@ void loop()
 void xmit_time()
 {
 	// This function connects to the server/s and sends as many messages as it can inside its time slot.
-
-	if (!GETSIZE(queue[xmit_cursor]) && !check_buffer_empty(xmit_buffer)) return;
-	
+	Serial.println("Checking to see if transmit is required...");
+	if (((int)GETSIZE(queue[xmit_cursor]) == 0) && !check_buffer_empty(xmit_buffer)) return;
+	Serial.println("Yep! Transmit is required...");
 	if (!pri_server.connect())
 	{
 		Serial.println("Failed to connect to primary server.");
@@ -127,12 +149,15 @@ void xmit_time()
 	if (!sec_server.connect())
 		Serial.println("Failed to connect to secondary server.");
 #endif
-	time = millis();
+	
 
 	// If a really big message is last, this might overrun the time slot. No way to fix unless the time taken
 	// to send messages can be pre-calculated faster than actually sending the message.
-	while (((millis()-time) < XMITSLOT) && GETSIZE(queue[xmit_cursor]))
+	
+	time = millis();
+	while (((millis()-time) < XMITSLOT) && ((int)GETSIZE(queue[xmit_cursor]) != 0))
 	{
+		Serial.println((int)GETSIZE(queue[xmit_cursor]));
 		xmit_message();
 	}
 		
@@ -162,6 +187,7 @@ void xmit_message()
 		for (int i = 0; i <= msgsize; i++)
 		{
 			xmit_buffer[i+1] = queue[xmit_cursor];
+			DUMP("Enqueueing byte: ", j, xmit_buffer, 16);
 			queue[xmit_cursor] = 0x00; // Consider not doing this until the message is ack'd
 			inc_cursor(&xmit_cursor);
 		}
@@ -259,18 +285,20 @@ void enqueue_message(byte type, byte size, byte* data)
 		Serial.println("Overlarge message not enqueued.");
 		return;
 	}
-	queue[add_cursor] = SETTYPE(queue[add_cursor],type);
-	queue[add_cursor] = SETSIZE(queue[add_cursor],size);
-	inc_cursor(&add_cursor);
-	check_overrun();
 	
-	for (int i = 0; i < size; i++)
+	for (int i = 0; i <= size; i++)
 	{
-		queue[add_cursor] = data[i];
+		if (!i)
+		{
+			queue[add_cursor] = SETTYPE(queue[add_cursor],type);
+			queue[add_cursor] = SETSIZE(queue[add_cursor],size);
+		} else {
+			queue[add_cursor] = data[i-1];
+		}
 		inc_cursor(&add_cursor);
 		check_overrun();
 	}
-	//Serial.println("Message enqueued.");
+	Serial.println("Message enqueued.");
 }
 
 void check_overrun()
@@ -278,10 +306,15 @@ void check_overrun()
 	if (add_cursor == xmit_cursor)
 	{
 		// Uh-oh. Our buffer has filled. Let's move the xmit_cursor along to the start of the oldest message.
-		Serial.println((int)GETSIZE(queue[add_cursor]));
-		for (int j = 0; j < (int)GETSIZE(queue[add_cursor]); j++)
+		Serial.print("Buffer overrun, size of next message: ");
+		Serial.println((int)GETSIZE(queue[xmit_cursor]));\
+		if ((int)GETSIZE(queue[xmit_cursor]))
 		{
-			inc_cursor(&xmit_cursor);
+			for (int j = 0; j < ((int)GETSIZE(queue[add_cursor])); j++)
+			{
+				queue[add_cursor] = 0x00;
+				inc_cursor(&xmit_cursor);
+			}
 		}
 	}
 }
@@ -289,13 +322,15 @@ void check_overrun()
 void inc_cursor(int* cursor)
 {
 	// Moves the add cursor through the send queue, wrapping to the start properly if need be.
-	if (++(*cursor) > QUEUESIZE)
+	if ((++(*cursor)) >= QUEUESIZE)
 		(*cursor) = 0;
+	Serial.print("inc_cursor: ");
+	Serial.println((*cursor));
 }
 
 int peek_cursor(int* cursor)
 {
-	if (((*cursor)+1) > QUEUESIZE)
+	if (((*cursor)+1) >= QUEUESIZE)
 		return 0;
 	return ((*cursor)+1);	
 }
