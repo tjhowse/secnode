@@ -18,7 +18,6 @@ import threading
 import sqlite3
 
 queue = []
-xmitslot = 500 #milliseconds
 
 def toHex(s):
 	lst = []
@@ -60,7 +59,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 		#response = "{}: {}".format(cur_thread.name, data)
 		#self.request.sendall(response)
 
-def append_checksum(message);
+def append_checksum(message):
 	parity = 0
 	for byte in bytearray(message):
 		parity = parity ^ byte
@@ -87,8 +86,8 @@ class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 	
 def init_sqldb(db):
 	db.execute('CREATE TABLE IF NOT EXISTS nodes (nodeid real, tag text, description text, cryptkey text, ip text, status text, zone text)')
-	db.execute('CREATE TABLE IF NOT EXISTS msgqueue (msgid real, nodeid real, message text)')
-	db.execute('CREATE TABLE IF NOT EXISTS nodestatus (nodeid real, var real, state real')
+	db.execute('CREATE TABLE IF NOT EXISTS msgqueue (msgid INTEGER PRIMARY KEY, nodeid real, message text)')
+	db.execute('CREATE TABLE IF NOT EXISTS nodestatus (nodeid real, var real, state real)')
 	
 	db.execute('INSERT INTO nodes VALUES (1, "TEST", "TEST NODE", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "192.168.1.177", "FINE, I GUESS.", "OUTSIDE")')
 	
@@ -98,11 +97,11 @@ def init_sqldb(db):
 def enqueue_message(node_id, message):
 	global sqldb	
 	t = (node_id, message)	
-	sqldb.execute('INSERT INTO msgqueue VALUES (?,?)',t)
+	sqldb.execute('INSERT INTO msgqueue VALUES (NULL,?,?)',t)
 	sqldb.commit()
 	
 if __name__ == "__main__":
-	HOST, PORT = "192.168.1.151", 5555
+	HOST, PORT = "192.168.1.100", 5555
 
 	server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
 	ip, port = server.server_address
