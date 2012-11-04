@@ -26,7 +26,7 @@ by Travis Howse <tjhowse@gmail.com>
 #define SETSIZE(details,size) ((details & 0xF0) | size)
 #define SETTYPE(details,type) ((details & 0x0F) | (type << 4))
 
-#define QUEUESIZE 64 // Bytes
+#define QUEUESIZE 512 // Bytes
 #define XMITSLOT 500 // Milliseconds
 #define ACKWAIT 200 // Milliseconds
 
@@ -76,6 +76,7 @@ void setup()
 	
 	aes256_init(&ctxt, key);
 	zero_xmit_buffer();
+	randomSeed(analogRead(5));
 	
 }
 
@@ -107,24 +108,16 @@ void loop()
 			Serial.print("Buffer filling: ");
 			Serial.println(get_buffer_util());
 
-		}
-		
-		/*Serial.println("");
-		Serial.print("xmit_cursor: ");
-		Serial.println(xmit_cursor,DEC);
-		Serial.print("add_cursor: ");
-		Serial.println(add_cursor,DEC);*/
-	}
- 
+		}		
+	} 
 	aes256_done(&ctxt);
 }
 
 void xmit_time()
 {
 	// This function connects to the server/s and sends as many messages as it can inside its time slot.
-	//Serial.println("Checking to see if transmit is required...");
 	if (((int)GETSIZE(queue[xmit_cursor]) == 0) && !check_buffer_empty(xmit_buffer)) return;
-	//Serial.println("Yep! Transmit is required...");
+	
 	if (!pri_server.connect())
 	{
 		Serial.println("Failed to connect to primary server.");
@@ -135,27 +128,24 @@ void xmit_time()
 		Serial.println("Failed to connect to secondary server.");
 #endif
 	
-
 	// If a really big message is last, this might overrun the time slot. No way to fix unless the time taken
 	// to send messages can be pre-calculated faster than actually sending the message.
-	
 	time = millis();
 	while (((millis()-time) < XMITSLOT) && ((int)GETSIZE(queue[xmit_cursor]) != 0))
 	{
 		//Serial.println((int)GETSIZE(queue[xmit_cursor]));
 		xmit_message();
+		wait_ack();
 	}
 		
 	pri_server.stop();
 #ifdef SECSERVER
 	sec_server.stop();
-#endif
-	
+#endif	
 }
 
 void xmit_message()
 {
-	unsigned long acktime;
 	// This function pops a message off the queue, encrypts it, sends it and moves the send cursor along.
 	
 	// If the xmit buffer is empty, the previous message was successfully sent.
@@ -175,29 +165,26 @@ void xmit_message()
 			inc_cursor(&xmit_cursor);
 		}
 		// TODO add a random byte at the second-from-the-end.
+		append_random(xmit_buffer);
 		append_checksum(xmit_buffer);		
 		aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	}
 	
 	if (pri_server.connected())
-	{
-		
-		/*aes256_decrypt_ecb(&ctxt, xmit_buffer);
-		DUMP("Transmitting: ", i, xmit_buffer, 16);
-		aes256_encrypt_ecb(&ctxt, xmit_buffer);*/
-		
 		pri_server.write(xmit_buffer,16);
-	}
+
 	if (sec_server.connected())
 		sec_server.write(xmit_buffer,16);
 		
-	acktime = millis();
+}
 
+void wait_ack()
+{
+	unsigned long acktime = millis();
+
+	// Wait for data to become available on the receive end of this client connection, or time out.
 	while (((millis()-acktime) < ACKWAIT) && !pri_server.available())
-	{
-		// Wait for data to become available on the receive end of this client connection, or time out.
 		delay(10);
-	}
 	
 	// If it left the above loop because it got a response...
 	if (pri_server.available())
@@ -248,15 +235,25 @@ void dump_queue()
 
 int get_buffer_util()
 {
-	if (add_cursor < xmit_cursor) return (QUEUESIZE-xmit_cursor)+add_cursor;
+	if (add_cursor < xmit_cursor)
+		return (QUEUESIZE-xmit_cursor)+add_cursor;
 	return add_cursor-xmit_cursor;
 }
 
 void append_checksum(byte* buffer)
 {
 	// Not sure if this is a great checksum. It should be good enough.
+	buffer[15] = 0x00;
 	for (int i = 0; i < 15; i++)
 		buffer[15] ^= buffer[i];
+}
+
+void append_random(byte* buffer)
+{
+	// I'm no cryptography buff, but it seems to me that if the node sent the same encrypted message occasionally,
+	// when a state transmission happened to synch with a value of the msgcount value, information could potentially 
+	// leak. Making the second-last byte random would make this ^255 less likely. I think.
+	buffer[14] = random(255);
 }
 
 bool check_checksum(byte* buffer)
