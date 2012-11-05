@@ -46,6 +46,7 @@ Client sec_server(sec_server_ip, 5555);
 aes256_context ctxt;
 
 int i,j;
+int i1, i2, i3, i4, i5, i6, i7, i8, i9;
 byte queue[QUEUESIZE];
 int xmit_cursor;
 int add_cursor;
@@ -105,13 +106,14 @@ void loop()
 		// TODO Act on commands.
 		
 		poll_state();		
-		xmit_time();
+		dump_queue();
+		xmit_time();	
 		
 		if (get_buffer_util() > 10)
 		{
 			Serial.print("Buffer filling: ");
 			Serial.println(get_buffer_util());
-		}		
+		}
 	} 
 	aes256_done(&ctxt);
 }
@@ -176,9 +178,9 @@ void xmit_message()
 		
 		xmit_buffer[0] = msgcount++;
 
-		for (int i = 0; i <= msgsize; i++)
+		for (i1 = 0; i1 <= msgsize; i1++)
 		{
-			xmit_buffer[i+1] = queue[xmit_cursor];
+			xmit_buffer[i1+1] = queue[xmit_cursor];
 			//DUMP("Enqueueing byte: ", j, xmit_buffer, 16);
 			queue[xmit_cursor] = 0x00; // Consider not doing this until the message is ack'd
 			inc_cursor(&xmit_cursor);
@@ -208,9 +210,9 @@ void wait_ack()
 	// If it left the above loop because it got a response...
 	if (pri_server.available())
 	{
-		for (int i = 0; i < 16; i++)
+		for (i2 = 0; i2 < 16; i2++)
 		{
-			while ((recv_buffer[i] = pri_server.read()) == -1) {}
+			while ((recv_buffer[i2] = pri_server.read()) == -1) {}
 		}
 		aes256_decrypt_ecb(&ctxt, recv_buffer);
 		if (check_checksum(recv_buffer))
@@ -235,21 +237,22 @@ void wait_ack()
 void dump_queue()
 {
 	DUMP("Queue: ", j, queue, 64);
-	for (int i = 0; i < 64; i++)
+	for (i3 = 0; i3 < 64; i3++)
 	{
-		if ((xmit_cursor == i) && (add_cursor == i))
+		if ((xmit_cursor == i3) && (add_cursor == i3))
 		{
 			Serial.print("BB");
-		} else if (add_cursor == i)
+		} else if (add_cursor == i3)
 		{
 			Serial.print("AA");
-		} else if (xmit_cursor == i)
+		} else if (xmit_cursor == i3)
 		{
 			Serial.print("XX");
 		} else {
 			Serial.print("__");
 		}
 	}
+	Serial.println("");
 }
 
 int get_buffer_util()
@@ -263,7 +266,7 @@ void append_checksum(byte* buffer)
 {
 	// Not sure if this is a great checksum. It should be good enough.
 	buffer[15] = 0x00;
-	for (int i = 0; i < 15; i++)
+	for (i = 0; i < 15; i++)
 		buffer[15] ^= buffer[i];
 }
 
@@ -277,7 +280,7 @@ void append_random(byte* buffer)
 
 bool check_checksum(byte* buffer)
 {
-	for (int i = 0; i < 15; i++)
+	for (i = 0; i < 15; i++)
 		buffer[15] ^= buffer[i];
 		
 	return (bool)buffer[15];
@@ -285,7 +288,7 @@ bool check_checksum(byte* buffer)
 
 bool check_buffer_empty(byte* buffer)
 {
-	for (int i = 0; i <= 15; i++)
+	for (i = 0; i <= 15; i++)
 		if ((int)buffer[i]) return 1;
 	
 	return 0;
@@ -293,7 +296,7 @@ bool check_buffer_empty(byte* buffer)
 
 void zero_buffer(byte* buffer)
 {
-	for (int i = 0; i < 16; i++)
+	for (i = 0; i < 16; i++)
 		buffer[i] = 0x00;
 }
 
@@ -309,14 +312,14 @@ void enqueue_message(byte type, byte size, byte* data)
 		return;
 	}
 	
-	for (int i = 0; i <= size; i++)
+	for (i4 = 0; i4 <= size; i4++)
 	{
-		if (!i)
+		if (!i4)
 		{
 			queue[add_cursor] = SETTYPE(queue[add_cursor],type);
 			queue[add_cursor] = SETSIZE(queue[add_cursor],size);
 		} else {
-			queue[add_cursor] = data[i-1];
+			queue[add_cursor] = data[i4-1];
 		}
 		inc_cursor(&add_cursor);
 		check_overrun();
@@ -333,7 +336,7 @@ void check_overrun()
 		//Serial.println((int)GETSIZE(queue[xmit_cursor]));
 		if ((int)GETSIZE(queue[xmit_cursor]))
 		{
-			for (int j = 0; j < ((int)GETSIZE(queue[add_cursor])); j++)
+			for (i5 = 0; i5 < ((int)GETSIZE(queue[add_cursor])); i5++)
 			{
 				queue[add_cursor] = 0x00;
 				inc_cursor(&xmit_cursor);
