@@ -42,6 +42,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 				decrypted = list(raw)
 				decrypted = "".join(decrypted)			
 				# TODO parse message, update database with statuses from node
+				
 				print toHex(decrypted)
 				if check_checksum(raw):
 					#bytearray(raw)[5] = 0xBB
