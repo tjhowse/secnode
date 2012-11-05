@@ -14,6 +14,7 @@ by Travis Howse <tjhowse@gmail.com>
 #include <WProgram.h>
 #include "aes256.h"
 #include "secnode.h"
+#include "msgtypes.h"
 #include <utility/w5100.h> // For the ethernet library.
 
 #define DUMP(str, i, buf, sz) { Serial.println(str); \
@@ -26,7 +27,7 @@ by Travis Howse <tjhowse@gmail.com>
 #define SETSIZE(details,size) ((details & 0xF0) | size)
 #define SETTYPE(details,type) ((details & 0x0F) | (type << 4))
 
-#define QUEUESIZE 512 // Bytes
+#define QUEUESIZE 64 // Bytes
 #define XMITSLOT 500 // Milliseconds
 #define ACKWAIT 200 // Milliseconds
 
@@ -55,6 +56,8 @@ byte xmit_buffer[16];
 byte recv_buffer[16];
 int msgsize;
 
+byte temp_msg[16];
+
 byte key[] = {
 	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 
 	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 
@@ -75,7 +78,7 @@ void setup()
 	add_cursor = 0;
 	
 	aes256_init(&ctxt, key);
-	zero_xmit_buffer();
+	zero_buffer(xmit_buffer);
 	randomSeed(analogRead(5));
 	
 }
@@ -91,8 +94,8 @@ void loop()
 	
 	while (1)
 	{
-		enqueue_message(1, 4, testmessage);
-		enqueue_message(1, 3, testmessage);
+		//enqueue_message(1, 4, testmessage);
+		//enqueue_message(1, 3, testmessage);
 		//Serial.println(add_cursor);
 		//Serial.println(xmit_cursor);
 		
@@ -101,16 +104,32 @@ void loop()
 		// Consider just enqueueing a message once every cycle to act as a heartbeat.
 		// TODO Act on commands.
 		
+		poll_state();		
 		xmit_time();
 		
 		if (get_buffer_util() > 10)
 		{
 			Serial.print("Buffer filling: ");
 			Serial.println(get_buffer_util());
-
 		}		
 	} 
 	aes256_done(&ctxt);
+}
+
+void poll_state()
+{
+	// This function polls the hardware and determines whether the server needs to know anything.
+	
+	// TODO Check card number interrupt buffers. See if there has been a card scanned.
+	
+	// TODO Check digital and analogue inputs.
+	int delme = analogRead(0);
+	
+	zero_buffer(temp_msg);
+	memcpy(&temp_msg, &delme,2);
+	enqueue_message(A0_RAW, 2, temp_msg);
+	
+	// TODO Check interrupt buffer for the tamper accelerometer.
 }
 
 void xmit_time()
@@ -151,7 +170,7 @@ void xmit_message()
 	// If the xmit buffer is empty, the previous message was successfully sent.
 	if (!check_buffer_empty(xmit_buffer))
 	{
-		zero_xmit_buffer();
+		zero_buffer(xmit_buffer);
 		
 		msgsize = (int)GETSIZE(queue[xmit_cursor]);
 		
@@ -203,7 +222,7 @@ void wait_ack()
 			// Received reply, checksum passed.
 			// TODO If a "I have news for you" flag comes in from the server, enqueue another heartbeat packet
 			// to allow the server to send another message.
-			zero_xmit_buffer();
+			zero_buffer(xmit_buffer);
 		}
 	} else {
 		//Serial.print("Didn't receive an ack for message: ");
@@ -272,11 +291,15 @@ bool check_buffer_empty(byte* buffer)
 	return 0;
 }
 
-void zero_xmit_buffer()
+void zero_buffer(byte* buffer)
 {
 	for (int i = 0; i < 16; i++)
-		xmit_buffer[i] = 0x00;
+		buffer[i] = 0x00;
 }
+
+void zero_msg_temp()
+{
+}	
 
 void enqueue_message(byte type, byte size, byte* data)
 {	
