@@ -35,14 +35,16 @@ class MyTCPHandler(SocketServer.BaseRequestHandler):
 
 	def handle(self):
 		# self.request is the TCP socket connected to the client
-		self.data = self.request.recv(16).strip()
+		self.data = self.request.recv(16)
 
-		print "{} wrote:".format(self.client_address[0])
-		print sys.getsizeof(self.data)
+		#print "{} wrote:".format(self.client_address[0])
+		#print sys.getsizeof(self.data)
 		if (sys.getsizeof(self.data) == 37):
 			obj2 = AES.new('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AES.MODE_ECB)
 			print toHex(obj2.decrypt(self.data))
-		
+			#TODO Calculate the checksum, check it, if it passes, send back an ack.
+		else:
+			print "Lost a message! Very bad!"
 		# just send back the same data, but upper-cased
 		#self.request.sendall(self.data.upper())
 
