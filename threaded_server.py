@@ -32,13 +32,28 @@ def toHex(s):
 
 class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 
-	def handle(self):
+	def read_message(self):
+		self.request.settimeout(5)
 		data = self.request.recv(16)
+		return data
+		data = []
+		startTime = time.time()
+		for i in range(0,16):
+			data.append(self.request.recv(1))
+			if (time.time() - startTime) > 0.5:
+				break
+		data = ''.join(data)
+		return data
+
+	def handle(self):
+		#self.settimeout(2.0)
+		#self.socket.settimeout(2.0)
+		
+		data = self.read_message()
 		while data != '':
-			cur_thread = threading.current_thread()
 			if (sys.getsizeof(data) == 37):
 				obj2 = AES.new('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AES.MODE_ECB)
-				raw = obj2.decrypt(data)
+				raw = obj2.decrypt(''.join(data))
 				decrypted = list(raw)
 				decrypted = "".join(decrypted)			
 				# TODO parse message, update database with statuses from node
@@ -54,11 +69,12 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 				
 			else:
 				print "Lost a message! Very bad!"
-			data = self.request.recv(16)
-	
+			data = self.read_message()
 			
 		#response = "{}: {}".format(cur_thread.name, data)
 		#self.request.sendall(response)
+		
+	
 
 def append_checksum(message):
 	parity = 0
@@ -105,6 +121,7 @@ if __name__ == "__main__":
 	HOST, PORT = "192.168.1.100", 5555
 
 	server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
+	#server.socket.settimeout(0)
 	ip, port = server.server_address
 
 	# Start a thread with the server -- that thread will then start one
