@@ -12,11 +12,16 @@ by Travis Howse <tjhowse@gmail.com>
 #include <stdio.h>
 #include <stdlib.h>
 #include <WProgram.h>
+#include <EEPROM.h>
 #include "aes256.h"
 #include "secnode.h"
 #include "msgtypes.h"
-#include <utility/w5100.h> // For the ethernet library.
 
+
+
+
+#include <utility/w5100.h> // For the ethernet library.
+#include "eeprommap.h"
 #define DUMP(str, i, buf, sz) { Serial.println(str); \
 								for(i=0; i<(sz); ++i) { if(buf[i]<0x10) Serial.print('0'); Serial.print(buf[i], HEX); } \
 								Serial.println(); }
@@ -36,8 +41,11 @@ by Travis Howse <tjhowse@gmail.com>
 								 
 byte mac[] = {	0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 byte ip[] = { 192,168,1,177 };
+byte mask[] = {255,255,255,0};
+byte gateway[] = {192,168,1,254};
+byte dns[] = {8,8,8,8};
 
-byte pri_server_ip[] = {192,168,1,100}; // HAL9002
+byte pri_server_ip[] = {192,168,1,101}; // HAL9002
 Client pri_server(pri_server_ip, 5555);
 
 byte sec_server_ip[] = {192,168,1,50}; // Tinman
@@ -70,7 +78,10 @@ byte key[] = {
 	
 void setup()
 {
-	Ethernet.begin(mac, ip);
+	insert_eeprom_settings();
+	load_eeprom_settings();
+	
+	Ethernet.begin(mac, ip); //, dns, gateway, mask);
 	W5100.setRetransmissionTime(0x07D0);
 	W5100.setRetransmissionCount(3);
 	Serial.begin(9600);
@@ -83,6 +94,12 @@ void setup()
 	aes256_init(&ctxt, key);
 	zero_buffer(xmit_buffer);
 	randomSeed(analogRead(5));
+	
+	/*pri_server_ip[0] = 192;
+	pri_server_ip[1] = 168;
+	pri_server_ip[2] = 1;
+	pri_server_ip[3] = 100;*/
+	//pri_server(pri_server_ip, 5555);
 	
 }
 
@@ -120,6 +137,86 @@ void loop()
 	aes256_done(&ctxt);
 }
 
+void insert_eeprom_settings()
+{
+	EEPROM.write(NODE_IP, 192);
+	EEPROM.write(NODE_IP+1, 168);
+	EEPROM.write(NODE_IP+2, 1);
+	EEPROM.write(NODE_IP+3, 177);
+	
+	EEPROM.write(NODE_MASK, 255);
+	EEPROM.write(NODE_MASK+1, 255);
+	EEPROM.write(NODE_MASK+2, 255);
+	EEPROM.write(NODE_MASK+3, 0);
+	
+	EEPROM.write(NODE_GW, 192);
+	EEPROM.write(NODE_GW+1, 168);
+	EEPROM.write(NODE_GW+2, 1);
+	EEPROM.write(NODE_GW+3, 254);
+	
+	EEPROM.write(NODE_DNS, 8);
+	EEPROM.write(NODE_DNS+1, 8);
+	EEPROM.write(NODE_DNS+2, 8);
+	EEPROM.write(NODE_DNS+3, 8);
+	
+	EEPROM.write(NODE_MAC, 0xDE);
+	EEPROM.write(NODE_MAC+1, 0xAD);
+	EEPROM.write(NODE_MAC+2, 0xBE);
+	EEPROM.write(NODE_MAC+3, 0xEF);
+	EEPROM.write(NODE_MAC+4, 0xFE);
+	EEPROM.write(NODE_MAC+5, 0xED);
+	
+	EEPROM.write(SERVER1_IP, 192);
+	EEPROM.write(SERVER1_IP+1, 168);
+	EEPROM.write(SERVER1_IP+2, 1);
+	EEPROM.write(SERVER1_IP+3, 100);
+
+	EEPROM.write(SERVER2_IP, 192);
+	EEPROM.write(SERVER2_IP+1, 168);
+	EEPROM.write(SERVER2_IP+2, 1);
+	EEPROM.write(SERVER2_IP+3, 100);
+	
+	for (i1 = 0; i1 < 32; i1++)
+		EEPROM.write(NODE_KEY + i1, 0x61);
+}
+
+void load_eeprom_settings()
+{
+	
+	pri_server_ip[0] = EEPROM.read(SERVER1_IP);
+	pri_server_ip[1] = EEPROM.read(SERVER1_IP+1);
+	pri_server_ip[2] = EEPROM.read(SERVER1_IP+2);
+	pri_server_ip[3] = EEPROM.read(SERVER1_IP+3);
+	
+	sec_server_ip[0] = EEPROM.read(SERVER2_IP);
+	sec_server_ip[1] = EEPROM.read(SERVER2_IP+1);
+	sec_server_ip[2] = EEPROM.read(SERVER2_IP+2);
+	sec_server_ip[3] = EEPROM.read(SERVER2_IP+3);
+	
+	mask[0] = EEPROM.read(NODE_MASK);
+	mask[1] = EEPROM.read(NODE_MASK+1);
+	mask[2] = EEPROM.read(NODE_MASK+2);
+	mask[3] = EEPROM.read(NODE_MASK+3);
+	
+	gateway[0] = EEPROM.read(NODE_GW);
+	gateway[1] = EEPROM.read(NODE_GW+1);
+	gateway[2] = EEPROM.read(NODE_GW+2);
+	gateway[3] = EEPROM.read(NODE_GW+3);
+	
+	dns[0] = EEPROM.read(NODE_DNS);
+	dns[1] = EEPROM.read(NODE_DNS+1);
+	dns[2] = EEPROM.read(NODE_DNS+2);
+	dns[3] = EEPROM.read(NODE_DNS+3);
+
+	ip[0] = EEPROM.read(NODE_IP);
+	ip[1] = EEPROM.read(NODE_IP+1);
+	ip[2] = EEPROM.read(NODE_IP+2);
+	ip[3] = EEPROM.read(NODE_IP+3);
+	
+	for (i1 = 0; i1 < 32; i1++)
+		key[i1] = EEPROM.read(NODE_KEY + i1);
+	
+}
 void poll_state()
 {
 	// This function polls the hardware and determines whether the server needs to know anything.
