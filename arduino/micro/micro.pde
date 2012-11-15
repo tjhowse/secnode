@@ -57,6 +57,8 @@ byte xmit_buffer[16];
 byte recv_buffer[16];
 int msgsize;
 
+int delme;
+
 byte temp_msg[16];
 
 byte key[] = {
@@ -106,7 +108,7 @@ void loop()
 		// TODO Act on commands.
 		
 		poll_state();		
-		dump_queue();
+		//dump_queue();
 		xmit_time();	
 		
 		if (get_buffer_util() > 10)
@@ -125,7 +127,7 @@ void poll_state()
 	// TODO Check card number interrupt buffers. See if there has been a card scanned.
 	
 	// TODO Check digital and analogue inputs.
-	int delme = analogRead(0);
+	delme = analogRead(0);
 	
 	zero_buffer(temp_msg);
 	memcpy(&temp_msg, &delme,2);

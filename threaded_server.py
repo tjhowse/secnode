@@ -32,24 +32,9 @@ def toHex(s):
 
 class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 
-	def read_message(self):
+	def handle(self):
 		self.request.settimeout(5)
 		data = self.request.recv(16)
-		return data
-		data = []
-		startTime = time.time()
-		for i in range(0,16):
-			data.append(self.request.recv(1))
-			if (time.time() - startTime) > 0.5:
-				break
-		data = ''.join(data)
-		return data
-
-	def handle(self):
-		#self.settimeout(2.0)
-		#self.socket.settimeout(2.0)
-		
-		data = self.read_message()
 		while data != '':
 			if (sys.getsizeof(data) == 37):
 				obj2 = AES.new('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AES.MODE_ECB)
@@ -69,7 +54,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 				
 			else:
 				print "Lost a message! Very bad!"
-			data = self.read_message()
+			data = self.request.recv(16)
 			
 		#response = "{}: {}".format(cur_thread.name, data)
 		#self.request.sendall(response)
