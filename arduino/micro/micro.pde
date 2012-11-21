@@ -67,10 +67,9 @@ unsigned long time;
 byte msgcount;
 byte xmit_buffer[16];
 byte recv_buffer[16];
-int msgsize;
-
+byte msgsize;
+byte total_msgsize;
 int delme;
-
 byte temp_msg[16];
 
 byte key[] = {
@@ -241,12 +240,24 @@ void poll_state()
 	// TODO Check digital and analogue inputs.
 	/*for (i6 = 0; i6 < A_IO_COUNT; i6++)
 		enqueue_raw_analogue(&i6);*/
-		
+	
+	// TODO 
 	for (i6 = D_IO_PIN_START; i6 < (D_IO_COUNT+D_IO_PIN_START); i6++)
 		enqueue_digital(&i6);
 		
-	
+	enqueue_analogue_alarms();
 	// TODO Check interrupt buffer for the tamper accelerometer.
+}
+
+void enqueue_analogue_alarms()
+{
+	for (i7 = 0; i7 < A_IO_COUNT; i7++)
+	{
+		// TODO In the future these will be compared to calibrated values. For now, apply a dumb threshold.
+		delme = analogRead(i7);
+		if (delme == 1023)
+			enqueue_raw_analogue(&i7);
+	}
 }
 
 void enqueue_digital(int* input)
@@ -308,22 +319,26 @@ void xmit_message()
 	// If the xmit buffer is empty, the previous message was successfully sent.
 	if (!check_buffer_empty(xmit_buffer))
 	{
-		zero_buffer(xmit_buffer);
-		
-		msgsize = (int)GETSIZE(queue[xmit_cursor]);
-		
+		total_msgsize = 0;
+		msgsize = GETSIZE(queue[xmit_cursor]);
 		xmit_buffer[0] = msgcount++;
-
-		for (i1 = 0; i1 <= msgsize; i1++)
+		while ((total_msgsize + msgsize) <= 13)
 		{
-			xmit_buffer[i1+1] = queue[xmit_cursor];
-			//DUMP("Enqueueing byte: ", j, xmit_buffer, 16);
-			queue[xmit_cursor] = 0x00; // Consider not doing this until the message is ack'd
-			inc_cursor(&xmit_cursor);
+			for (i1 = 0; i1 <= msgsize; i1++)
+			{
+				xmit_buffer[total_msgsize+i1+1] = queue[xmit_cursor];
+				//DUMP("Enqueueing byte: ", j, xmit_buffer, 16);
+				queue[xmit_cursor] = 0x00; // Consider not doing this until the message is ack'd
+				inc_cursor(&xmit_cursor);
+			}
+			total_msgsize += (msgsize+1);
+			msgsize = GETSIZE(queue[xmit_cursor]);
+			if (!msgsize) break;
 		}
 		// TODO add a random byte at the second-from-the-end.
 		append_random(xmit_buffer);
-		append_checksum(xmit_buffer);		
+		append_checksum(xmit_buffer);
+		DUMP("Sending: ", j, xmit_buffer, 16);
 		aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	}
 	
