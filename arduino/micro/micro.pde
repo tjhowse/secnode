@@ -37,7 +37,7 @@ by Travis Howse <tjhowse@gmail.com>
 #define ACKWAIT 200 // Milliseconds
 
 #define A_IO_COUNT 5
-#define D_IO_COUNT 5
+#define D_IO_COUNT 3
 #define D_IO_PIN_START 2
 
 
@@ -71,6 +71,7 @@ byte msgsize;
 byte total_msgsize;
 int delme;
 byte temp_msg[16];
+byte digital_prev_state;
 
 byte key[] = {
 	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 
@@ -97,6 +98,10 @@ void setup()
 	aes256_init(&ctxt, key);
 	zero_buffer(xmit_buffer);
 	randomSeed(analogRead(5));
+	
+	for (i1 = D_IO_PIN_START; i < D_IO_PIN_START+D_IO_COUNT; i1++)
+		pinMode(i1, OUTPUT);
+		
 	
 	/*pri_server_ip[0] = 192;
 	pri_server_ip[1] = 168;
@@ -237,16 +242,38 @@ void poll_state()
 	
 	// TODO Check card number interrupt buffers. See if there has been a card scanned.
 	
-	// TODO Check digital and analogue inputs.
+	// TODO Remove this
 	/*for (i6 = 0; i6 < A_IO_COUNT; i6++)
-		enqueue_raw_analogue(&i6);*/
+	{
+		delme = analogRead(i7);
+		enqueue_raw_analogue(&i6, &delme);
+	}*/
 	
-	// TODO 
-	for (i6 = D_IO_PIN_START; i6 < (D_IO_COUNT+D_IO_PIN_START); i6++)
-		enqueue_digital(&i6);
+	// TODO Make this transmit upon stage change only.
+	/*for (i6 = D_IO_PIN_START; i6 < (D_IO_COUNT+D_IO_PIN_START); i6++)
+		enqueue_digital(&i6);*/
+	enqueue_digital_alarms();
 		
-	enqueue_analogue_alarms();
+	//enqueue_analogue_alarms();
 	// TODO Check interrupt buffer for the tamper accelerometer.
+}
+
+void enqueue_digital_alarms()
+{
+	for (i6 = D_IO_PIN_START; i6 < (D_IO_COUNT+D_IO_PIN_START); i6++)
+	{
+		delme = digitalRead(i6);
+		if (delme != (bool)(digital_prev_state & (0x01<<(i6-D_IO_PIN_START))))
+		{
+			enqueue_digital(&i6, &delme);
+			if (delme)
+			{
+				digital_prev_state |= ((0x01)<<(i6-D_IO_PIN_START));
+			} else {
+				digital_prev_state &= ~((0x01)<<(i6-D_IO_PIN_START));
+			}
+		}
+	}
 }
 
 void enqueue_analogue_alarms()
@@ -256,22 +283,24 @@ void enqueue_analogue_alarms()
 		// TODO In the future these will be compared to calibrated values. For now, apply a dumb threshold.
 		delme = analogRead(i7);
 		if (delme == 1023)
-			enqueue_raw_analogue(&i7);
+			enqueue_raw_analogue(&i7, &delme);
 	}
 }
 
-void enqueue_digital(int* input)
+void enqueue_digital(int* input, int* value)
 {
-	delme = digitalRead(*input);
+	// TODO Tidy this.
+	delme = *value;
 	zero_buffer(temp_msg);
 	memcpy(&temp_msg, &delme,1);
 	temp_msg[0] = SETTYPE(temp_msg[0],((byte)*input)-D_IO_PIN_START);
 	enqueue_message(D_STATUS, 1, temp_msg);
 }
 
-void enqueue_raw_analogue(int* input)
+void enqueue_raw_analogue(int* input, int* value)
 {
-	delme = analogRead(*input);
+	// TODO Tidy this.
+	delme = *value;
 	zero_buffer(temp_msg);
 	memcpy(&temp_msg, &delme,2);
 	temp_msg[1] = SETTYPE(temp_msg[1],(byte)*input);
@@ -296,8 +325,6 @@ void xmit_time()
 		Serial.println("Failed to connect to secondary server.");
 #endif
 	
-	// If a really big message is last, this might overrun the time slot. No way to fix unless the time taken
-	// to send messages can be pre-calculated faster than actually sending the message.
 	time = millis();
 	while (((millis()-time) < XMITSLOT) && ((int)GETSIZE(queue[xmit_cursor]) != 0))
 	{
@@ -338,7 +365,7 @@ void xmit_message()
 		// TODO add a random byte at the second-from-the-end.
 		append_random(xmit_buffer);
 		append_checksum(xmit_buffer);
-		DUMP("Sending: ", j, xmit_buffer, 16);
+		//DUMP("Sending: ", j, xmit_buffer, 16);
 		aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	}
 	
