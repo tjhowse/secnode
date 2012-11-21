@@ -15,4 +15,6 @@
 #define SERVER1_IP 64
 // The secondary server's IP, for future use
 #define SERVER2_IP 68
+// Digital pin modes
+#define PIN_MODES 100
 

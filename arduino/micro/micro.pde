@@ -36,6 +36,10 @@ by Travis Howse <tjhowse@gmail.com>
 #define XMITSLOT 500 // Milliseconds
 #define ACKWAIT 200 // Milliseconds
 
+#define A_IO_COUNT 5
+#define D_IO_COUNT 5
+#define D_IO_PIN_START 2
+
 
 //#define SECSERVER
 								 
@@ -178,11 +182,14 @@ void insert_eeprom_settings()
 	
 	for (i1 = 0; i1 < 32; i1++)
 		EEPROM.write(NODE_KEY + i1, 0x61);
+		
+	for (i1 = 0; i1 < 5; i1++)
+		EEPROM.write(PIN_MODES + i1, 0x1);
 }
+
 
 void load_eeprom_settings()
 {
-	
 	pri_server_ip[0] = EEPROM.read(SERVER1_IP);
 	pri_server_ip[1] = EEPROM.read(SERVER1_IP+1);
 	pri_server_ip[2] = EEPROM.read(SERVER1_IP+2);
@@ -215,8 +222,16 @@ void load_eeprom_settings()
 	
 	for (i1 = 0; i1 < 32; i1++)
 		key[i1] = EEPROM.read(NODE_KEY + i1);
-	
+
+	for (i1 = 0; i1 < D_IO_COUNT; i1++)
+	{
+		if (EEPROM.read(PIN_MODES + i1))
+			pinMode(i1+D_IO_PIN_START, INPUT);
+		else
+			pinMode(i1+D_IO_PIN_START, OUTPUT);
+	}
 }
+
 void poll_state()
 {
 	// This function polls the hardware and determines whether the server needs to know anything.
@@ -224,13 +239,35 @@ void poll_state()
 	// TODO Check card number interrupt buffers. See if there has been a card scanned.
 	
 	// TODO Check digital and analogue inputs.
-	delme = analogRead(0);
-	
-	zero_buffer(temp_msg);
-	memcpy(&temp_msg, &delme,2);
-	enqueue_message(A0_RAW, 2, temp_msg);
+	/*for (i6 = 0; i6 < A_IO_COUNT; i6++)
+		enqueue_raw_analogue(&i6);*/
+		
+	for (i6 = D_IO_PIN_START; i6 < (D_IO_COUNT+D_IO_PIN_START); i6++)
+		enqueue_digital(&i6);
+		
 	
 	// TODO Check interrupt buffer for the tamper accelerometer.
+}
+
+void enqueue_digital(int* input)
+{
+	delme = digitalRead(*input);
+	zero_buffer(temp_msg);
+	memcpy(&temp_msg, &delme,1);
+	temp_msg[0] = SETTYPE(temp_msg[0],((byte)*input)-D_IO_PIN_START);
+	enqueue_message(D_STATUS, 1, temp_msg);
+}
+
+void enqueue_raw_analogue(int* input)
+{
+	delme = analogRead(*input);
+	zero_buffer(temp_msg);
+	memcpy(&temp_msg, &delme,2);
+	temp_msg[1] = SETTYPE(temp_msg[1],(byte)*input);
+	temp_msg[2] = temp_msg[0];
+	temp_msg[0] = temp_msg[1];
+	temp_msg[1] = temp_msg[2];	
+	enqueue_message(A_RAW, 2, temp_msg);
 }
 
 void xmit_time()
@@ -398,10 +435,6 @@ void zero_buffer(byte* buffer)
 	for (i = 0; i < 16; i++)
 		buffer[i] = 0x00;
 }
-
-void zero_msg_temp()
-{
-}	
 
 void enqueue_message(byte type, byte size, byte* data)
 {	
