@@ -171,6 +171,9 @@ void enqueue_card_scan()
 	}
 	//Serial.println(scanned_card);
 	DUMP("Card: ", i, scanned_card, CARD_SIGNAL_LENGTH);
+	disable_interrupts();
+	enqueue_message(CARD_NUM, (card_len>>3)+1, (byte*)scanned_card);
+	enable_interrupts();
 	clear_card_buffer();
 	
 }
