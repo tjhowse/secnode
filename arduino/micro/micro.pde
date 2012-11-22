@@ -16,12 +16,9 @@ by Travis Howse <tjhowse@gmail.com>
 #include "aes256.h"
 #include "secnode.h"
 #include "msgtypes.h"
-
-
-
+#include "eeprommap.h"
 
 #include <utility/w5100.h> // For the ethernet library.
-#include "eeprommap.h"
 #define DUMP(str, i, buf, sz) { Serial.println(str); \
 								for(i=0; i<(sz); ++i) { if(buf[i]<0x10) Serial.print('0'); Serial.print(buf[i], HEX); } \
 								Serial.println(); }
@@ -38,8 +35,9 @@ by Travis Howse <tjhowse@gmail.com>
 
 #define A_IO_COUNT 5
 #define D_IO_COUNT 3
-#define D_IO_PIN_START 2
+#define D_IO_PIN_START 4
 
+#define CARD_SIGNAL_LENGTH 12
 
 //#define SECSERVER
 								 
@@ -63,6 +61,7 @@ byte queue[QUEUESIZE];
 int xmit_cursor;
 int add_cursor;
 unsigned long time;
+
 // Unsure if byte is enough (1B)
 byte msgcount;
 byte xmit_buffer[16];
@@ -72,6 +71,12 @@ byte total_msgsize;
 int delme;
 byte temp_msg[16];
 byte digital_prev_state;
+
+volatile byte scanned_card[CARD_SIGNAL_LENGTH];
+volatile byte card_len; // Length, in bits, of the card read.
+volatile byte scanner_2_used; // Flag to say that the second card reader was used.
+unsigned long scan_check; // Time.
+byte prev_card_len;
 
 byte key[] = {
 	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 
@@ -102,7 +107,10 @@ void setup()
 	for (i1 = D_IO_PIN_START; i < D_IO_PIN_START+D_IO_COUNT; i1++)
 		pinMode(i1, OUTPUT);
 		
+	clear_card_buffer();
 	
+	enable_interrupts();
+		
 	/*pri_server_ip[0] = 192;
 	pri_server_ip[1] = 168;
 	pri_server_ip[2] = 1;
@@ -144,6 +152,53 @@ void loop()
 	} 
 	aes256_done(&ctxt);
 }
+
+void enqueue_card_scan()
+{
+	if (!card_len) return;
+
+	prev_card_len = card_len;
+	scan_check = millis();	
+	while ((millis()-scan_check) < 5)
+	{
+		// There might be a scan in progress right now. If the length doesn't change inside
+		// a 5ms window, the scan has finished. Wiegand bits are 2ms apart at most.
+		if (prev_card_len != card_len)
+		{
+			prev_card_len = card_len;
+			scan_check = millis();
+		}
+	}
+	//Serial.println(scanned_card);
+	DUMP("Card: ", i, scanned_card, CARD_SIGNAL_LENGTH);
+	clear_card_buffer();
+	
+}
+
+void clear_card_buffer()
+{
+	for (i1 = 0; i1 < CARD_SIGNAL_LENGTH; i1++)
+		scanned_card[i1] = 0;
+	
+	card_len = 0;
+	scanner_2_used = 0;
+}
+
+void enable_interrupts()
+{
+	//pinMode(2, OUTPUT);
+	//pinMode(3, OUTPUT);
+	digitalWrite(2,HIGH);
+	digitalWrite(3,HIGH);
+	attachInterrupt(0, card_reader_0, FALLING);
+	attachInterrupt(1, card_reader_1, FALLING);
+}
+
+void disable_interrupts()
+{
+	detachInterrupt(0);
+	detachInterrupt(1);
+}	
 
 void insert_eeprom_settings()
 {
@@ -249,12 +304,12 @@ void poll_state()
 		enqueue_raw_analogue(&i6, &delme);
 	}*/
 	
-	// TODO Make this transmit upon stage change only.
 	/*for (i6 = D_IO_PIN_START; i6 < (D_IO_COUNT+D_IO_PIN_START); i6++)
 		enqueue_digital(&i6);*/
+	enqueue_card_scan();
 	enqueue_digital_alarms();
-		
-	//enqueue_analogue_alarms();
+	enqueue_analogue_alarms();
+
 	// TODO Check interrupt buffer for the tamper accelerometer.
 }
 
@@ -532,3 +587,18 @@ int peek_cursor(int* cursor)
 		return 0;
 	return ((*cursor)+1);	
 }
+
+void card_reader_0()
+{
+	card_len++;
+}
+
+void card_reader_1()
+{
+	scanned_card[card_len>>3] |= 0x01<<(card_len%8);
+	card_len++;
+	// Assuming the data1 line from the second card reader leads here
+	if (!digitalRead(4))
+		scanner_2_used = 1;
+}
+
