@@ -30,6 +30,12 @@ by Travis Howse <tjhowse@gmail.com>
 #define SETSIZE(details,size) ((details & 0xF0) | size)
 #define SETTYPE(details,type) ((details & 0x0F) | (type << 4))
 
+#define GETLOW(details) GETSIZE(details)
+#define GETHIGH(details) GETTYPE(details)
+
+#define SETLOW(details,size) SETSIZE(details,size)
+#define SETHIGH(details,type) SETTYPE(details,type)
+
 #define QUEUESIZE 64 // Bytes
 #define XMITSLOT 200 // Milliseconds
 #define ACKWAIT 200 // Milliseconds
@@ -345,7 +351,30 @@ void enqueue_analogue_alarms()
 	for (i7 = 0; i7 < A_IO_COUNT; i7++)
 	{
 		// TODO In the future these will be compared to calibrated values. For now, apply a dumb threshold.
-		delme = analogRead(i7);
+		/*delme = analogRead(i7);
+		zero_buffer(temp_msg);
+		if (delme == 0)
+		{
+			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
+			temp_msg[0] = SETLOW(temp_msg[0],A_SHORT);
+		} else if (delme == 1023) {
+			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
+			temp_msg[0] = SETLOW(temp_msg[0],A_OPENCIRCUIT);
+			
+		} else if ((delme >= thresholds[i7].sec_min) && (delme <= thresholds[i7].sec_max)) {
+		
+			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
+			temp_msg[0] = SETLOW(temp_msg[0],A_SECURE);
+			
+		} else if ((delme >= thresholds[i7].opn_min) && (delme <= thresholds[i7].opn_max)) {
+			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
+			temp_msg[0] = SETLOW(temp_msg[0],A_OPEN);		
+		} else {
+			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
+			temp_msg[0] = SETLOW(temp_msg[0],A_TAMPER);			
+		}
+		enqueue_message(A_STATUS, 1, temp_msg);
+		*/
 		if (delme == 1023)
 			enqueue_raw_analogue(&i7, &delme);
 	}
@@ -357,7 +386,7 @@ void enqueue_digital(int* input, int* value)
 	delme = *value;
 	zero_buffer(temp_msg);
 	memcpy(&temp_msg, &delme,1);
-	temp_msg[0] = SETTYPE(temp_msg[0],((byte)*input)-D_IO_PIN_START);
+	temp_msg[0] = SETHIGH(temp_msg[0],((byte)*input)-D_IO_PIN_START);
 	enqueue_message(D_STATUS, 1, temp_msg);
 }
 
@@ -367,7 +396,7 @@ void enqueue_raw_analogue(int* input, int* value)
 	delme = *value;
 	zero_buffer(temp_msg);
 	memcpy(&temp_msg, &delme,2);
-	temp_msg[1] = SETTYPE(temp_msg[1],(byte)*input);
+	temp_msg[1] = SETHIGH(temp_msg[1],(byte)*input);
 	temp_msg[2] = temp_msg[0];
 	temp_msg[0] = temp_msg[1];
 	temp_msg[1] = temp_msg[2];	
