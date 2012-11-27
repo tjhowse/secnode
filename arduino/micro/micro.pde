@@ -278,39 +278,16 @@ void insert_eeprom_settings()
 void load_eeprom_settings()
 {
 	Serial.println("Loading settings from eeprom");
-	pri_server_ip[0] = EEPROM.read(SERVER1_IP);
-	pri_server_ip[1] = EEPROM.read(SERVER1_IP+1);
-	pri_server_ip[2] = EEPROM.read(SERVER1_IP+2);
-	pri_server_ip[3] = EEPROM.read(SERVER1_IP+3);
 	
-	sec_server_ip[0] = EEPROM.read(SERVER2_IP);
-	sec_server_ip[1] = EEPROM.read(SERVER2_IP+1);
-	sec_server_ip[2] = EEPROM.read(SERVER2_IP+2);
-	sec_server_ip[3] = EEPROM.read(SERVER2_IP+3);
+	EEPROM_readAnything(SERVER1_IP, pri_server_ip);
 	
-	mask[0] = EEPROM.read(NODE_MASK);
-	mask[1] = EEPROM.read(NODE_MASK+1);
-	mask[2] = EEPROM.read(NODE_MASK+2);
-	mask[3] = EEPROM.read(NODE_MASK+3);
+	EEPROM_readAnything(SERVER2_IP, sec_server_ip);
+	EEPROM_readAnything(NODE_MASK, mask);
+	EEPROM_readAnything(NODE_GW, gateway);
+	EEPROM_readAnything(NODE_DNS, dns);
+	EEPROM_readAnything(NODE_IP, ip);
+	EEPROM_readAnything(NODE_KEY, key);
 	
-	gateway[0] = EEPROM.read(NODE_GW);
-	gateway[1] = EEPROM.read(NODE_GW+1);
-	gateway[2] = EEPROM.read(NODE_GW+2);
-	gateway[3] = EEPROM.read(NODE_GW+3);
-	
-	dns[0] = EEPROM.read(NODE_DNS);
-	dns[1] = EEPROM.read(NODE_DNS+1);
-	dns[2] = EEPROM.read(NODE_DNS+2);
-	dns[3] = EEPROM.read(NODE_DNS+3);
-
-	ip[0] = EEPROM.read(NODE_IP);
-	ip[1] = EEPROM.read(NODE_IP+1);
-	ip[2] = EEPROM.read(NODE_IP+2);
-	ip[3] = EEPROM.read(NODE_IP+3);
-	
-	for (i1 = 0; i1 < 32; i1++)
-		key[i1] = EEPROM.read(NODE_KEY + i1);
-
 	for (i1 = 0; i1 < D_IO_COUNT; i1++)
 	{
 		if (EEPROM.read(PIN_MODES + i1))
