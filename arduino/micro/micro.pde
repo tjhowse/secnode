@@ -91,6 +91,7 @@ struct threshold {
 	int sec_max;
 	int opn_min;
 	int opn_max;
+	byte prev_state;
 };
 
 threshold thresholds[A_IO_COUNT];
@@ -351,32 +352,30 @@ void enqueue_analogue_alarms()
 	for (i7 = 0; i7 < A_IO_COUNT; i7++)
 	{
 		// TODO In the future these will be compared to calibrated values. For now, apply a dumb threshold.
-		/*delme = analogRead(i7);
+		delme = analogRead(i7);
 		zero_buffer(temp_msg);
 		if (delme == 0)
 		{
-			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
-			temp_msg[0] = SETLOW(temp_msg[0],A_SHORT);
+			delme = A_SHORT;
 		} else if (delme == 1023) {
-			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
-			temp_msg[0] = SETLOW(temp_msg[0],A_OPENCIRCUIT);
-			
+			delme = A_OPENCIRCUIT;
 		} else if ((delme >= thresholds[i7].sec_min) && (delme <= thresholds[i7].sec_max)) {
-		
-			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
-			temp_msg[0] = SETLOW(temp_msg[0],A_SECURE);
-			
+			delme = A_SECURE;
 		} else if ((delme >= thresholds[i7].opn_min) && (delme <= thresholds[i7].opn_max)) {
-			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
-			temp_msg[0] = SETLOW(temp_msg[0],A_OPEN);		
+			delme = A_OPEN;		
 		} else {
-			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
-			temp_msg[0] = SETLOW(temp_msg[0],A_TAMPER);			
+			delme = A_TAMPER;			
 		}
-		enqueue_message(A_STATUS, 1, temp_msg);
-		*/
-		if (delme == 1023)
-			enqueue_raw_analogue(&i7, &delme);
+		if (delme != thresholds[i7].prev_state)
+		{
+			temp_msg[0] = SETHIGH(temp_msg[0],(byte)i7);
+			temp_msg[0] = SETLOW(temp_msg[0],(byte)delme);			
+			enqueue_message(A_STATUS, 1, temp_msg);
+			thresholds[i7].prev_state = delme;
+		}
+		
+		/*if (delme == 1023)
+			enqueue_raw_analogue(&i7, &delme);*/
 	}
 }
 
