@@ -13,6 +13,7 @@ by Travis Howse <tjhowse@gmail.com>
 #include <stdlib.h>
 #include <WProgram.h>
 #include <EEPROM.h>
+#include "EEPROMAnything.h"
 #include "aes256.h"
 #include "secnode.h"
 #include "msgtypes.h"
@@ -30,7 +31,7 @@ by Travis Howse <tjhowse@gmail.com>
 #define SETTYPE(details,type) ((details & 0x0F) | (type << 4))
 
 #define QUEUESIZE 64 // Bytes
-#define XMITSLOT 500 // Milliseconds
+#define XMITSLOT 200 // Milliseconds
 #define ACKWAIT 200 // Milliseconds
 
 #define A_IO_COUNT 5
@@ -71,12 +72,22 @@ byte total_msgsize;
 int delme;
 byte temp_msg[16];
 byte digital_prev_state;
+byte recv_cursor;
 
 volatile byte scanned_card[CARD_SIGNAL_LENGTH];
 volatile byte card_len; // Length, in bits, of the card read.
 volatile byte scanner_2_used; // Flag to say that the second card reader was used.
 unsigned long scan_check; // Time.
 byte prev_card_len;
+
+struct threshold {
+	int sec_min;
+	int sec_max;
+	int opn_min;
+	int opn_max;
+};
+
+threshold thresholds[A_IO_COUNT];
 
 byte key[] = {
 	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 
@@ -87,14 +98,15 @@ byte key[] = {
 	
 void setup()
 {
-	insert_eeprom_settings();
+	Serial.begin(9600);
+	Serial.println("Hello...");
+	insert_eeprom_settings();	
 	load_eeprom_settings();
 	
 	Ethernet.begin(mac, ip); //, dns, gateway, mask);
 	W5100.setRetransmissionTime(0x07D0);
 	W5100.setRetransmissionCount(3);
-	Serial.begin(9600);
-	Serial.println("Hello...");
+	
 	
 	msgcount = 0;
 	xmit_cursor = 0;
@@ -153,6 +165,7 @@ void loop()
 	aes256_done(&ctxt);
 }
 
+
 void enqueue_card_scan()
 {
 	if (!card_len) return;
@@ -205,6 +218,7 @@ void disable_interrupts()
 
 void insert_eeprom_settings()
 {
+	Serial.println("Savings settings to eeprom");
 	EEPROM.write(NODE_IP, 192);
 	EEPROM.write(NODE_IP+1, 168);
 	EEPROM.write(NODE_IP+2, 1);
@@ -247,11 +261,23 @@ void insert_eeprom_settings()
 		
 	for (i1 = 0; i1 < 5; i1++)
 		EEPROM.write(PIN_MODES + i1, 0x1);
+	
+	for (i1 = 0; i1 < A_IO_COUNT; i1++)
+	{
+		thresholds[i1].sec_min = 200;
+		thresholds[i1].sec_max = 400;
+		thresholds[i1].opn_min = 800;
+		thresholds[i1].opn_max = 1000;
+		
+		EEPROM_writeAnything(A0_SEC_MIN+(8*i1), thresholds[i1]);
+	}
+	
 }
 
 
 void load_eeprom_settings()
 {
+	Serial.println("Loading settings from eeprom");
 	pri_server_ip[0] = EEPROM.read(SERVER1_IP);
 	pri_server_ip[1] = EEPROM.read(SERVER1_IP+1);
 	pri_server_ip[2] = EEPROM.read(SERVER1_IP+2);
@@ -292,6 +318,9 @@ void load_eeprom_settings()
 		else
 			pinMode(i1+D_IO_PIN_START, OUTPUT);
 	}
+	
+	for (i1 = 0; i1 < A_IO_COUNT; i1++)
+		EEPROM_readAnything(A0_SEC_MIN+(8*i1), thresholds[i1]);
 }
 
 void poll_state()
@@ -460,6 +489,9 @@ void wait_ack()
 			// Received reply, checksum passed.
 			// TODO If a "I have news for you" flag comes in from the server, enqueue another heartbeat packet
 			// to allow the server to send another message.
+			// Not 100% sure of whether this should be here, or if recv'd messages should go into a buffer too
+			// and be processed in a separate function called from the main loop....
+			handle_message();
 			zero_buffer(xmit_buffer);
 		}
 	} else {
@@ -468,6 +500,38 @@ void wait_ack()
 		DUMP("Didn't receive an ack for message: ", i, xmit_buffer, 16);
 		aes256_encrypt_ecb(&ctxt, xmit_buffer);
 	}
+}
+
+void handle_message()
+{
+	// This should only be called from inside wait_ack()
+	recv_cursor = 0;
+	
+	do {
+		switch (GETTYPE(recv_buffer[recv_cursor]))
+		{
+			case A_RAW:
+				delme = analogRead(recv_buffer[recv_cursor+1]);
+				enqueue_raw_analogue((int*)recv_buffer[recv_cursor+1], &delme);
+				break;
+			case D_SET:
+				// Write a dedicated function to handle pulsing digital outputs.
+				digitalWrite(recv_buffer[recv_cursor+1], HIGH);
+				break;
+			case EEPROM_SET:
+				break;
+			case MORE_MSG:
+				break;
+				
+		}
+		
+		if (GETSIZE(recv_buffer[recv_cursor]))
+		{
+			recv_cursor += GETSIZE(recv_buffer[recv_cursor]);
+		} else {
+			break;
+		}
+	} while (recv_cursor <= 13);
 }
 
 void dump_queue()
@@ -598,7 +662,7 @@ void card_reader_0()
 
 void card_reader_1()
 {
-	scanned_card[card_len>>3] |= 0x01<<(card_len%8);
+	scanned_card[card_len>>3] |= 0x01<<(7-(card_len%8));
 	card_len++;
 	// Assuming the data1 line from the second card reader leads here
 	if (!digitalRead(4))
