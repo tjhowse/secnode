@@ -78,7 +78,11 @@ byte total_msgsize;
 int delme;
 byte temp_msg[16];
 byte digital_prev_state;
+byte digital_out_mode; // 0 - Normally low, 1 - Normally high
 byte recv_cursor;
+
+unsigned long d_pulse_end[D_IO_COUNT];
+unsigned long pulse_mark;
 
 volatile byte scanned_card[CARD_SIGNAL_LENGTH];
 volatile byte card_len; // Length, in bits, of the card read.
@@ -92,6 +96,7 @@ struct threshold {
 	int opn_min;
 	int opn_max;
 	byte prev_state;
+	byte enabled;
 };
 
 threshold thresholds[A_IO_COUNT];
@@ -161,7 +166,8 @@ void loop()
 		
 		poll_state();		
 		//dump_queue();
-		xmit_time();	
+		xmit_time();
+		handle_digital_pulses();
 		
 		if (get_buffer_util() > 10)
 		{
@@ -266,8 +272,9 @@ void insert_eeprom_settings()
 	for (i1 = 0; i1 < 32; i1++)
 		EEPROM.write(NODE_KEY + i1, 0x61);
 		
-	for (i1 = 0; i1 < 5; i1++)
-		EEPROM.write(PIN_MODES + i1, 0x1);
+	EEPROM.write(D_PIN_MODES, 0xFF);
+		
+	//EEPROM.write(A_PIN_MODES, 0x1);
 	
 	for (i1 = 0; i1 < A_IO_COUNT; i1++)
 	{
@@ -275,9 +282,13 @@ void insert_eeprom_settings()
 		thresholds[i1].sec_max = 400;
 		thresholds[i1].opn_min = 800;
 		thresholds[i1].opn_max = 1000;
+		thresholds[i1].prev_state = A_TAMPER;
+		thresholds[i1].enabled = 0;
 		
-		EEPROM_writeAnything(A0_SEC_MIN+(8*i1), thresholds[i1]);
+		EEPROM_writeAnything(A0_SEC_MIN+(10*i1), thresholds[i1]);
 	}
+	EEPROM.write(A4_ENABLED, 1);
+	//EEPROM.write(A2_ENABLED, 1);
 	
 }
 
@@ -295,33 +306,28 @@ void load_eeprom_settings()
 	EEPROM_readAnything(NODE_IP, ip);
 	EEPROM_readAnything(NODE_KEY, key);
 	
+	EEPROM_readAnything(D_PIN_MODES, digital_out_mode);
+	
 	for (i1 = 0; i1 < D_IO_COUNT; i1++)
 	{
-		if (EEPROM.read(PIN_MODES + i1))
-			pinMode(i1+D_IO_PIN_START, INPUT);
-		else
+		if (digital_out_mode&(0x01<<(i1-D_IO_PIN_START)))
+		{
 			pinMode(i1+D_IO_PIN_START, OUTPUT);
+			digitalWrite(i1+D_IO_PIN_START, HIGH);
+		} else {
+			pinMode(i1+D_IO_PIN_START, OUTPUT);
+			digitalWrite(i1+D_IO_PIN_START, LOW);
+		}
 	}
 	
 	for (i1 = 0; i1 < A_IO_COUNT; i1++)
-		EEPROM_readAnything(A0_SEC_MIN+(8*i1), thresholds[i1]);
+		EEPROM_readAnything(A0_SEC_MIN+(10*i1), thresholds[i1]);
 }
 
 void poll_state()
 {
 	// This function polls the hardware and determines whether the server needs to know anything.
 	
-	// TODO Check card number interrupt buffers. See if there has been a card scanned.
-	
-	// TODO Remove this
-	/*for (i6 = 0; i6 < A_IO_COUNT; i6++)
-	{
-		delme = analogRead(i7);
-		enqueue_raw_analogue(&i6, &delme);
-	}*/
-	
-	/*for (i6 = D_IO_PIN_START; i6 < (D_IO_COUNT+D_IO_PIN_START); i6++)
-		enqueue_digital(&i6);*/
 	enqueue_card_scan();
 	enqueue_digital_alarms();
 	enqueue_analogue_alarms();
@@ -351,18 +357,18 @@ void enqueue_analogue_alarms()
 {
 	for (i7 = 0; i7 < A_IO_COUNT; i7++)
 	{
-		// TODO In the future these will be compared to calibrated values. For now, apply a dumb threshold.
+		if (!thresholds[i7].enabled) continue;
 		delme = analogRead(i7);
 		zero_buffer(temp_msg);
-		if (delme == 0)
+		if ((delme >= thresholds[i7].sec_min) && (delme <= thresholds[i7].sec_max)) {
+			delme = A_SECURE;
+		} else if ((delme >= thresholds[i7].opn_min) && (delme <= thresholds[i7].opn_max)) {
+			delme = A_OPEN;		
+		} else if (delme == 0)
 		{
 			delme = A_SHORT;
 		} else if (delme == 1023) {
 			delme = A_OPENCIRCUIT;
-		} else if ((delme >= thresholds[i7].sec_min) && (delme <= thresholds[i7].sec_max)) {
-			delme = A_SECURE;
-		} else if ((delme >= thresholds[i7].opn_min) && (delme <= thresholds[i7].opn_max)) {
-			delme = A_OPEN;		
 		} else {
 			delme = A_TAMPER;			
 		}
@@ -373,9 +379,6 @@ void enqueue_analogue_alarms()
 			enqueue_message(A_STATUS, 1, temp_msg);
 			thresholds[i7].prev_state = delme;
 		}
-		
-		/*if (delme == 1023)
-			enqueue_raw_analogue(&i7, &delme);*/
 	}
 }
 
@@ -510,7 +513,8 @@ void wait_ack()
 void handle_message()
 {
 	// This should only be called from inside wait_ack()
-	recv_cursor = 0;
+	return;
+	recv_cursor = 1;
 	
 	do {
 		switch (GETTYPE(recv_buffer[recv_cursor]))
@@ -520,14 +524,22 @@ void handle_message()
 				enqueue_raw_analogue((int*)recv_buffer[recv_cursor+1], &delme);
 				break;
 			case D_SET:
-				// Write a dedicated function to handle pulsing digital outputs.
-				digitalWrite(recv_buffer[recv_cursor+1], HIGH);
+				if (GETHIGH(recv_buffer[recv_cursor+1]) >= D_IO_COUNT)
+					break;
+				digitalWrite(GETHIGH(recv_buffer[recv_cursor+1]), GETLOW(recv_buffer[recv_cursor+1]));
+				break;
+			case D_PULSE:
+				if (GETHIGH(recv_buffer[recv_cursor+1]) >= D_IO_COUNT)
+					break;
+				// This might not be a great idea. I'm going to have to be certain that the unsigned long fits properly.
+				d_pulse_end[GETHIGH(recv_buffer[recv_cursor+1])] = millis() + (unsigned long)recv_buffer[recv_cursor+2];
+				digitalWrite(GETHIGH(recv_buffer[recv_cursor+1]+D_IO_PIN_START),~(digital_out_mode&(0x01<<(GETHIGH(recv_buffer[recv_cursor+1])))));
 				break;
 			case EEPROM_SET:
 				break;
 			case MORE_MSG:
+				enqueue_message(MORE_MSG, 1, 0x00);
 				break;
-				
 		}
 		
 		if (GETSIZE(recv_buffer[recv_cursor]))
@@ -536,7 +548,23 @@ void handle_message()
 		} else {
 			break;
 		}
-	} while (recv_cursor <= 13);
+	} while (recv_cursor <= 14);
+}
+
+void handle_digital_pulses()
+{
+	pulse_mark = millis();
+	for (i3 = 0; i3 < D_IO_COUNT; i3++)
+	{
+		if (!d_pulse_end[i3])
+		{
+			if (d_pulse_end[i3] < pulse_mark)
+			{
+				digitalWrite(GETHIGH(recv_buffer[recv_cursor+1]+D_IO_PIN_START),(digital_out_mode&(0x01<<(GETHIGH(recv_buffer[recv_cursor+1])))));
+				d_pulse_end[i3] = 0;
+			}
+		}
+	}
 }
 
 void dump_queue()

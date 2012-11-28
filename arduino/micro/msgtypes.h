@@ -3,8 +3,9 @@
 #define D_STATUS 2
 #define CARD_NUM 3
 #define D_SET 4
-#define EEPROM_SET 5
-#define MORE_MSG 6
+#define D_PULSE 5
+#define EEPROM_SET 6
+#define MORE_MSG 7
 
 
 // These aren't message types per se, they're analogue point states

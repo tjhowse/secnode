@@ -16,29 +16,39 @@
 // The secondary server's IP, for future use
 #define SERVER2_IP 68
 // Digital pin modes
-#define PIN_MODES 100
+#define D_PIN_MODES 100
 // Analogue pin thresholds
 #define A0_SEC_MIN 102
 #define A0_SEC_MAX 104
 #define A0_OPN_MIN 106
 #define A0_OPN_MAX 108
+#define A0_PREV_STATE 110
+#define A0_ENABLED 111
 
-#define A1_SEC_MIN 110
-#define A1_SEC_MAX 112
-#define A1_OPN_MIN 114
-#define A1_OPN_MAX 116
+#define A1_SEC_MIN 112
+#define A1_SEC_MAX 114
+#define A1_OPN_MIN 116
+#define A1_OPN_MAX 118
+#define A1_PREV_STATE 120
+#define A1_ENABLED 121
 
-#define A2_SEC_MIN 118
-#define A2_SEC_MAX 120
-#define A2_OPN_MIN 122
-#define A2_OPN_MAX 124
+#define A2_SEC_MIN 122
+#define A2_SEC_MAX 124
+#define A2_OPN_MIN 126
+#define A2_OPN_MAX 128
+#define A2_PREV_STATE 130
+#define A2_ENABLED 131
 
-#define A3_SEC_MIN 126
-#define A3_SEC_MAX 128
-#define A3_OPN_MIN 130
-#define A3_OPN_MAX 132
+#define A3_SEC_MIN 132
+#define A3_SEC_MAX 134
+#define A3_OPN_MIN 136
+#define A3_OPN_MAX 138
+#define A3_PREV_STATE 140
+#define A3_ENABLED 141
 
-#define A4_SEC_MIN 134
-#define A4_SEC_MAX 136
-#define A4_OPN_MIN 138
-#define A4_OPN_MAX 140
+#define A4_SEC_MIN 142
+#define A4_SEC_MAX 144
+#define A4_OPN_MIN 146
+#define A4_OPN_MAX 148
+#define A4_PREV_STATE 150
+#define A4_ENABLED 151
