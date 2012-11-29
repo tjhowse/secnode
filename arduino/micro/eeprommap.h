@@ -52,3 +52,5 @@
 #define A4_OPN_MAX 148
 #define A4_PREV_STATE 150
 #define A4_ENABLED 151
+
+#define EEPROMTEST 800

@@ -134,6 +134,27 @@ void setup()
 	clear_card_buffer();
 	
 	enable_interrupts();
+	
+	/*temp_msg[0] = 0x00;
+	temp_msg[1] = 0x63;
+	temp_msg[2] = 0x03;
+	temp_msg[3] = 0x20;
+	temp_msg[4] = 0xff;
+	temp_msg[5] = 0x00;
+	temp_msg[6] = 0x00;
+	temp_msg[7] = 0x00;
+	temp_msg[8] = 0x00;
+	temp_msg[9] = 0x00;
+	temp_msg[10] = 0x00;
+	temp_msg[11] = 0x00;
+	temp_msg[12] = 0x00;
+	temp_msg[13] = 0x00;
+	temp_msg[14] = 0x3a;
+	temp_msg[15] = 0x00;
+	append_checksum(temp_msg);
+	DUMP("Should be: ", j, temp_msg, 16);*/
+	
+	//00630320ff0000000000000000003a8e
 		
 	/*pri_server_ip[0] = 192;
 	pri_server_ip[1] = 168;
@@ -513,13 +534,15 @@ void wait_ack()
 void handle_message()
 {
 	// This should only be called from inside wait_ack()
-	return;
+	//return;
 	recv_cursor = 1;
-	
+	//DUMP("Response: ", i, recv_buffer, 16);
 	do {
 		switch (GETTYPE(recv_buffer[recv_cursor]))
 		{
 			case A_RAW:
+				if (recv_buffer[recv_cursor+1] >= A_IO_COUNT)
+					break;
 				delme = analogRead(recv_buffer[recv_cursor+1]);
 				enqueue_raw_analogue((int*)recv_buffer[recv_cursor+1], &delme);
 				break;
@@ -536,6 +559,21 @@ void handle_message()
 				digitalWrite(GETHIGH(recv_buffer[recv_cursor+1]+D_IO_PIN_START),~(digital_out_mode&(0x01<<(GETHIGH(recv_buffer[recv_cursor+1])))));
 				break;
 			case EEPROM_SET:
+				delme = 0;
+				delme |= recv_buffer[recv_cursor+1];
+				delme |= recv_buffer[recv_cursor+2]<<8;
+				// I think delme will now contain the destination in EEPROM of the data.
+				// TODO This will require a more delicate touch. If a bad crypto key is sent then
+				// this node is bricked. There will have to be some kind of trial period with new
+				// network settings and encryption keys, inside which the old values are kept on
+				// file and reverted back to if the connection is not restored.
+				for (i8 = 0; i8 < GETSIZE(recv_buffer[recv_cursor])-2; i8++)
+					EEPROM.write(delme+i8, recv_buffer[recv_cursor+3+i8]);
+				delme = 0;
+				delme = EEPROM.read(EEPROMTEST);
+				Serial.print("EEPROMTEST: ");
+				Serial.println(delme);
+					
 				break;
 			case MORE_MSG:
 				enqueue_message(MORE_MSG, 1, 0x00);
@@ -556,13 +594,10 @@ void handle_digital_pulses()
 	pulse_mark = millis();
 	for (i3 = 0; i3 < D_IO_COUNT; i3++)
 	{
-		if (!d_pulse_end[i3])
+		if ((!d_pulse_end[i3]) && (d_pulse_end[i3] < pulse_mark))
 		{
-			if (d_pulse_end[i3] < pulse_mark)
-			{
-				digitalWrite(GETHIGH(recv_buffer[recv_cursor+1]+D_IO_PIN_START),(digital_out_mode&(0x01<<(GETHIGH(recv_buffer[recv_cursor+1])))));
-				d_pulse_end[i3] = 0;
-			}
+			digitalWrite(i3+D_IO_PIN_START,(digital_out_mode&(0x01<<i3)));
+			d_pulse_end[i3] = 0;
 		}
 	}
 }
