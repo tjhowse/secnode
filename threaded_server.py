@@ -39,15 +39,42 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 			if (sys.getsizeof(data) == 37):
 				obj2 = AES.new('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AES.MODE_ECB)
 				raw = obj2.decrypt(''.join(data))
-				decrypted = list(raw)
-				decrypted = "".join(decrypted)			
-				# TODO parse message, update database with statuses from node
 				
-				print toHex(decrypted)
+				# TODO parse message, update database with statuses from node
+				#print toHex(decrypted)
+				#for c in message:
+				#	c = c+0.00
+				#	print c.hex()
+				
 				if check_checksum(raw):
+					
+					decrypted = list(raw)
+					print "In: "
+					print toHex(decrypted)
+					'''decrypted[0] = '\x00'
+					decrypted[1] = '\x63'
+					decrypted[2] = '\x03'
+					decrypted[3] = '\x20'
+					decrypted[4] = '\x0F'
+					decrypted[5] = '\x00'
+					decrypted[6] = '\x00'
+					decrypted[7] = '\x00'
+					decrypted[8] = '\x00'
+					decrypted[9] = '\x00'
+					decrypted[10] = '\x00'
+					decrypted[11] = '\x00'
+					decrypted[12] = '\x00'
+					decrypted[13] = '\x00'
+					decrypted[14] = '\x3a'
+					decrypted[15] = '\x85'
+					print "Out: "
+					print toHex(decrypted)'''
+					decrypted = "".join(decrypted)					
+					append_checksum(decrypted)
+					
 					#bytearray(raw)[5] = 0xBB
 					# TODO Read from msgqueue and send off a message relevant to this node
-					self.request.sendall(obj2.encrypt(raw))
+					self.request.sendall(obj2.encrypt(decrypted))
 
 				else:
 					print "Hark! A checksum failed!"
@@ -61,11 +88,11 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 		
 	
 
-def append_checksum(message):
+'''def append_checksum(message):
 	parity = 0
 	for byte in bytearray(message):
 		parity = parity ^ byte
-	
+	'''
 		
 def check_checksum(message):
 	parity = 0
@@ -77,9 +104,11 @@ def check_checksum(message):
 
 def append_checksum(message):
 	message = bytearray(message)
-	message[15] = 0
+	message.pop()
+	parity = 0
 	for byte in message:
-		message[15] = message[15] ^ byte
+		parity = parity ^ byte
+	message.append(parity)
 	return message
 	
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
