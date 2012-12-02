@@ -15,6 +15,9 @@
 #define SERVER1_IP 64
 // The secondary server's IP, for future use
 #define SERVER2_IP 68
+
+#define BACKUP_END 72
+
 // Digital pin modes
 #define D_PIN_MODES 100
 // Analogue pin thresholds
@@ -52,5 +55,7 @@
 #define A4_OPN_MAX 148
 #define A4_PREV_STATE 150
 #define A4_ENABLED 151
+
+#define EEPROM_BACKUP 400
 
 #define EEPROMTEST 800

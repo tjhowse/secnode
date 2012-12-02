@@ -45,6 +45,7 @@ by Travis Howse <tjhowse@gmail.com>
 #define D_IO_PIN_START 4
 
 #define CARD_SIGNAL_LENGTH 12
+#define EEPROM_DEADMAN_TIMEOUT 5000
 
 //#define SECSERVER
 								 
@@ -100,6 +101,9 @@ struct threshold {
 };
 
 threshold thresholds[A_IO_COUNT];
+byte eeprom_backed_up;
+unsigned long eeprom_deadman;
+int eeprom_seting;
 
 byte key[] = {
 	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 
@@ -119,10 +123,10 @@ void setup()
 	W5100.setRetransmissionTime(0x07D0);
 	W5100.setRetransmissionCount(3);
 	
-	
 	msgcount = 0;
 	xmit_cursor = 0;
 	add_cursor = 0;
+	eeprom_backed_up = 0;
 	
 	aes256_init(&ctxt, key);
 	zero_buffer(xmit_buffer);
@@ -183,12 +187,19 @@ void loop()
 		// TODO Send a heartbeat to the server/s. It might respond with commands,
 		// add any commands to the command queue.
 		// Consider just enqueueing a message once every cycle to act as a heartbeat.
-		// TODO Act on commands.
 		
 		poll_state();		
 		//dump_queue();
 		xmit_time();
 		handle_digital_pulses();
+		
+		if ((eeprom_deadman > 0) &&
+			((millis() - eeprom_deadman) > EEPROM_DEADMAN_TIMEOUT) &&
+			(eeprom_backed_up))
+		{
+			// The new EEPROM settings are no good, restore the old ones.
+			restore_eeprom();
+		}
 		
 		if (get_buffer_util() > 10)
 		{
@@ -516,8 +527,6 @@ void wait_ack()
 		} else {
 			//DUMP("Received: ", i, recv_buffer, 16);
 			// Received reply, checksum passed.
-			// TODO If a "I have news for you" flag comes in from the server, enqueue another heartbeat packet
-			// to allow the server to send another message.
 			// Not 100% sure of whether this should be here, or if recv'd messages should go into a buffer too
 			// and be processed in a separate function called from the main loop....
 			handle_message();
@@ -536,6 +545,13 @@ void handle_message()
 	// This should only be called from inside wait_ack()
 	//return;
 	recv_cursor = 1;
+	if (eeprom_deadman > 0)
+	{
+		eeprom_deadman = 0;
+		// Enqueue "new settings good!" message.
+		enqueue_message(EEPROM_SET, 2, (byte*)eeprom_seting);		
+		eeprom_seting = 0;
+	}
 	//DUMP("Response: ", i, recv_buffer, 16);
 	do {
 		switch (GETTYPE(recv_buffer[recv_cursor]))
@@ -559,20 +575,25 @@ void handle_message()
 				digitalWrite(GETHIGH(recv_buffer[recv_cursor+1]+D_IO_PIN_START),~(digital_out_mode&(0x01<<(GETHIGH(recv_buffer[recv_cursor+1])))));
 				break;
 			case EEPROM_SET:
-				delme = 0;
-				delme |= recv_buffer[recv_cursor+1];
-				delme |= recv_buffer[recv_cursor+2]<<8;
-				// I think delme will now contain the destination in EEPROM of the data.
-				// TODO This will require a more delicate touch. If a bad crypto key is sent then
-				// this node is bricked. There will have to be some kind of trial period with new
-				// network settings and encryption keys, inside which the old values are kept on
-				// file and reverted back to if the connection is not restored.
+				eeprom_seting = 0;
+				eeprom_seting |= recv_buffer[recv_cursor+1];
+				eeprom_seting |= recv_buffer[recv_cursor+2]<<8;
+	
+				if (eeprom_seting <= BACKUP_END)
+				{
+					// We're changing sensitive settings here. Must be careful.
+					backup_eeprom();
+					eeprom_deadman == millis();
+				}
+				
 				for (i8 = 0; i8 < GETSIZE(recv_buffer[recv_cursor])-2; i8++)
-					EEPROM.write(delme+i8, recv_buffer[recv_cursor+3+i8]);
-				delme = 0;
+					EEPROM.write(eeprom_seting+i8, recv_buffer[recv_cursor+3+i8]);
+					
+				load_eeprom_settings();
+				/*delme = 0;
 				delme = EEPROM.read(EEPROMTEST);
 				Serial.print("EEPROMTEST: ");
-				Serial.println(delme);
+				Serial.println(delme);*/
 					
 				break;
 			case MORE_MSG:
@@ -587,6 +608,22 @@ void handle_message()
 			break;
 		}
 	} while (recv_cursor <= 14);
+}
+
+void backup_eeprom()
+{
+	// This function backs up the EEPROM settings which, if mis-assigned, could brick the node.
+	for (i9 = 0; i9 <= BACKUP_END; i9++)
+		EEPROM.write(i9+EEPROM_BACKUP,EEPROM.read(i9));
+		
+	eeprom_backed_up = 1;
+}
+
+void restore_eeprom()
+{
+	// This function restores the previously backed-up EEPROM settings.
+	for (i9 = 0; i9 <= BACKUP_END; i9++)
+		EEPROM.write(i9,EEPROM.read(i9+EEPROM_BACKUP));
 }
 
 void handle_digital_pulses()
