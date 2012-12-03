@@ -68,6 +68,7 @@ int i1, i2, i3, i4, i5, i6, i7, i8, i9;
 byte queue[QUEUESIZE];
 int xmit_cursor;
 int add_cursor;
+int erase_cursor;
 unsigned long time;
 
 // Unsure if byte is enough (1B)
@@ -121,7 +122,7 @@ void setup()
 	
 	Ethernet.begin(mac, ip); //, dns, gateway, mask);
 	W5100.setRetransmissionTime(0x07D0);
-	W5100.setRetransmissionCount(3);
+	W5100.setRetransmissionCount(1);
 	
 	msgcount = 0;
 	xmit_cursor = 0;
@@ -597,7 +598,7 @@ void handle_message()
 					
 				break;
 			case MORE_MSG:
-				enqueue_message(MORE_MSG, 1, 0x00);
+				enqueue_message(MORE_MSG, 0, 0x00);
 				break;
 		}
 		
@@ -735,13 +736,16 @@ void check_overrun()
 		// Uh-oh. Our buffer has filled. Let's move the xmit_cursor along to the start of the oldest message.
 		//Serial.print("Buffer overrun, size of next message: ");
 		//Serial.println((int)GETSIZE(queue[xmit_cursor]));
-		if ((int)GETSIZE(queue[xmit_cursor]))
+		erase_cursor = (int)GETSIZE(queue[xmit_cursor]);
+		if (erase_cursor)
 		{
-			for (i5 = 0; i5 < ((int)GETSIZE(queue[add_cursor])); i5++)
+			for (i5 = 0; i5 <= erase_cursor; i5++)
 			{
-				queue[add_cursor] = 0x00;
+				queue[xmit_cursor] = 0x00;
 				inc_cursor(&xmit_cursor);
 			}
+		} else {
+			inc_cursor(&xmit_cursor);
 		}
 	}
 }
