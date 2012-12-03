@@ -49,7 +49,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 				if check_checksum(raw):
 					
 					decrypted = list(raw)
-					print "In: "
+					#print "In: "
 					print toHex(decrypted)
 					'''decrypted[0] = '\x00'
 					decrypted[1] = '\x63'
@@ -69,6 +69,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 					decrypted[15] = '\x85'
 					print "Out: "
 					print toHex(decrypted)'''
+					#parse_message(decrypted)
 					decrypted = "".join(decrypted)					
 					append_checksum(decrypted)
 					
@@ -87,12 +88,19 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 		#self.request.sendall(response)
 		
 	
+def parse_message(message):
+	for i in range(2,4):
+		#print toHex(message[i])
+		print "High: ",get_high(bytearray(message[i]))
+		print "Low : ",get_low(bytearray(message[i]))
+		
 
-'''def append_checksum(message):
-	parity = 0
-	for byte in bytearray(message):
-		parity = parity ^ byte
-	'''
+def get_high(byte):
+	print type(byte)
+	return byte>>4
+	
+def get_low(byte):
+	return byte[0]&0x0F
 		
 def check_checksum(message):
 	parity = 0
@@ -119,6 +127,7 @@ def init_sqldb(db):
 	db.execute('CREATE TABLE IF NOT EXISTS nodes (nodeid real, tag text, description text, cryptkey text, ip text, status text, zone text)')
 	db.execute('CREATE TABLE IF NOT EXISTS msgqueue (msgid INTEGER PRIMARY KEY, nodeid real, message text)')
 	db.execute('CREATE TABLE IF NOT EXISTS nodestatus (nodeid real, var real, state real)')
+	db.execute('CREATE TABLE IF NOT EXISTS pinstate (nodeid real, pin real, state real, duration real)')
 	
 	db.execute('INSERT INTO nodes VALUES (1, "TEST", "TEST NODE", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "192.168.1.177", "FINE, I GUESS.", "OUTSIDE")')
 	
