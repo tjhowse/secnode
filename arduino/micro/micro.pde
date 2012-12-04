@@ -321,6 +321,7 @@ void insert_eeprom_settings()
 		EEPROM_writeAnything(A0_SEC_MIN+(10*i1), thresholds[i1]);
 	}
 	EEPROM.write(A4_ENABLED, 1);
+	EEPROM.write(A3_ENABLED, 1);
 	//EEPROM.write(A2_ENABLED, 1);
 	
 }
