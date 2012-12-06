@@ -96,20 +96,23 @@ def build_reply(mysqldb, nodeID):
 	while 1:
 		result = c.fetchone()
 		if result != None:
-			newmsg = (c.fetchone()[1]).encode( "ascii" )
-			#newmsg = list(c.fetchone()[1])
-			print type(newmsg)
-			print newmsg
-			#newmsg = bytearray(newmsg)
 			
-			#newmsg = array.array('B', newmsg).tostring()
-			print "Message: ",newmsg[0]
-			print "Message size: ",get_low(newmsg[0])
-			if (get_low(newmsg[0]) + cursor)<14:
+			msgid = (result[0])
+			newmsg = (result[1]).encode( "ascii" )
+			# This throws a hissy fit when it sees 0x00, it assumes the string is over.
+			error is here
+			#newmsg = (c.fetchone()[1])
+			print type(newmsg)
+			
+			print "newmsg: \"",toHex(newmsg),"\""
+			
+			if (get_low(newmsg[0]) + cursor)<13:
 				for byte in newmsg:
 					print cursor
 					reply[cursor] = byte
 					cursor = cursor + 1
+				mysqldb.execute('DELETE FROM msgqueue WHERE msgid=?', (msgid,))
+				mysqldb.commit()
 			else:
 				break
 		else:
@@ -269,7 +272,7 @@ def init_sqldb(db):
 	db.commit()
 	
 	db.execute('CREATE TABLE IF NOT EXISTS nodes (nodeid INTEGER PRIMARY KEY, tag text, description text, cryptokey text, ip text, status text, zone text)')
-	db.execute('CREATE TABLE IF NOT EXISTS msgqueue (msgid integer, nodeid integer, message text)')
+	db.execute('CREATE TABLE IF NOT EXISTS msgqueue (msgid integer, nodeid integer, message blob)')
 	db.execute('CREATE TABLE IF NOT EXISTS nodestatus (nodeid INTEGER PRIMARY KEY, var integer, state integer)')
 	db.execute('CREATE TABLE IF NOT EXISTS inputstate (nodeid integer, pin integer, state integer, raw integer )')
 	db.execute('CREATE TABLE IF NOT EXISTS outputstate (nodeid integer, pin integer, state integer, duration integer)')
@@ -300,11 +303,15 @@ def setup_new_node(db):
 	db.commit()
 	
 def enqueue_message(sqldb,node_id, message):
-	#print type(message)
-	#message = str(message).strip('[]')
-	message = str(message)
-	#print type(message)
-	t = (1,node_id, message)
+	# This was kinda working
+
+	bytemessage = ""
+	for byte in message:
+		bytemessage += unichr(byte)
+	#print toHex(bytemessage)
+	
+	
+	t = (1,node_id, bytemessage)
 	sqldb.execute('INSERT INTO msgqueue VALUES (?,?,?)',t)
 	sqldb.commit()
 	
