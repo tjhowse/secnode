@@ -90,11 +90,30 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 		
 def build_reply(mysqldb, nodeID):
 	reply = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+	cursor = 1
 	c = mysqldb.cursor()	
 	c.execute('SELECT msgid,message FROM msgqueue WHERE nodeid=?',(nodeID,))
-	result = c.fetchone()
-	#if result != None:
-		#reply = c.fetchone()
+	while 1:
+		result = c.fetchone()
+		if result != None:
+			newmsg = (c.fetchone()[1]).encode( "ascii" )
+			#newmsg = list(c.fetchone()[1])
+			print type(newmsg)
+			print newmsg
+			#newmsg = bytearray(newmsg)
+			
+			#newmsg = array.array('B', newmsg).tostring()
+			print "Message: ",newmsg[0]
+			print "Message size: ",get_low(newmsg[0])
+			if (get_low(newmsg[0]) + cursor)<14:
+				for byte in newmsg:
+					print cursor
+					reply[cursor] = byte
+					cursor = cursor + 1
+			else:
+				break
+		else:
+			break
 	c.close()
 	return reply
 	
@@ -152,17 +171,16 @@ def drive_output(mysqldb, nodeid, pin, high_low, pulse):
 		message[1] = set_low(message[1], 0)
 		# Not entirely sure how to pack a python integer into four bytes, so I'll encode 2000 by hand for now.
 		# TODO
-		message[2] = '\x00'
-		message[3] = '\x00'
-		message[4] = '\x07'
-		message[5] = '\xD0'
+		message[2] = 0x00
+		message[3] = 0x00
+		message[4] = 0x07
+		message[5] = 0xD0
 	else:
 		message[0] = set_high(message[0], 4)
 		message[0] = set_low(message[0], 1)
 		message[1] = set_high(message[1], pin)
 		message[1] = set_low(message[1], high_low)
-	#enqueue_message(sqldb, nodeid, message)
-	print message
+	enqueue_message(mysqldb, nodeid, message)
 	
 def decode_card(raw_card):
 	# This function decodes a raw card bitstring and produces a card number. For now, it will always return 1.
@@ -282,8 +300,12 @@ def setup_new_node(db):
 	db.commit()
 	
 def enqueue_message(sqldb,node_id, message):
-	t = (node_id, message)	
-	sqldb.execute('INSERT INTO msgqueue VALUES (NULL,?,?)',t)
+	#print type(message)
+	#message = str(message).strip('[]')
+	message = str(message)
+	#print type(message)
+	t = (1,node_id, message)
+	sqldb.execute('INSERT INTO msgqueue VALUES (?,?,?)',t)
 	sqldb.commit()
 	
 if __name__ == "__main__":
@@ -307,7 +329,7 @@ if __name__ == "__main__":
 	
 	while 1:
 		time.sleep(1)
-		enqueue_message(sqldb, 1, "111111")
+		#enqueue_message(sqldb, 1, "111111")
 		
 
 	
