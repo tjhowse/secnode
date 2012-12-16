@@ -17,6 +17,8 @@ import socket
 import threading
 import sqlite3
 import array
+import json
+
 queue = []
 
 def toHex(s):
@@ -70,7 +72,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 					print toHex(decrypted)'''
 					parse_message(mysqldb, nodeID, decrypted)
 					
-					decrypted[5] = '\xF0'
+					#decrypted[5] = '\xF0'
 					# TODO Read from msgqueue and send off a message relevant to this node
 					
 					decrypted = build_reply(mysqldb, nodeID)
@@ -96,19 +98,10 @@ def build_reply(mysqldb, nodeID):
 	while 1:
 		result = c.fetchone()
 		if result != None:
-			
-			msgid = (result[0])
-			newmsg = (result[1]).encode( "ascii" )
-			# This throws a hissy fit when it sees 0x00, it assumes the string is over.
-			error is here
-			#newmsg = (c.fetchone()[1])
-			print type(newmsg)
-			
-			print "newmsg: \"",toHex(newmsg),"\""
-			
+			msgid = result[0]
+			newmsg = json.loads(result[1])
 			if (get_low(newmsg[0]) + cursor)<13:
 				for byte in newmsg:
-					print cursor
 					reply[cursor] = byte
 					cursor = cursor + 1
 				mysqldb.execute('DELETE FROM msgqueue WHERE msgid=?', (msgid,))
@@ -173,11 +166,10 @@ def drive_output(mysqldb, nodeid, pin, high_low, pulse):
 		message[1] = set_high(message[1], pin)
 		message[1] = set_low(message[1], 0)
 		# Not entirely sure how to pack a python integer into four bytes, so I'll encode 2000 by hand for now.
-		# TODO
-		message[2] = 0x00
-		message[3] = 0x00
-		message[4] = 0x07
-		message[5] = 0xD0
+		message[2] = 0xD0
+		message[3] = 0x07
+		message[4] = 0x00
+		message[5] = 0x00
 	else:
 		message[0] = set_high(message[0], 4)
 		message[0] = set_low(message[0], 1)
@@ -303,15 +295,10 @@ def setup_new_node(db):
 	db.commit()
 	
 def enqueue_message(sqldb,node_id, message):
-	# This was kinda working
-
-	bytemessage = ""
-	for byte in message:
-		bytemessage += unichr(byte)
-	#print toHex(bytemessage)
 	
+	b = json.dumps(message)
 	
-	t = (1,node_id, bytemessage)
+	t = (1,node_id, b)
 	sqldb.execute('INSERT INTO msgqueue VALUES (?,?,?)',t)
 	sqldb.commit()
 	
