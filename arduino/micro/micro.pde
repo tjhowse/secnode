@@ -573,8 +573,12 @@ void handle_message()
 				if (GETHIGH(recv_buffer[recv_cursor+1]) >= D_IO_COUNT)
 					break;
 				// This might not be a great idea. I'm going to have to be certain that the unsigned long fits properly.
-				d_pulse_end[GETHIGH(recv_buffer[recv_cursor+1])] = millis() + (unsigned long)recv_buffer[recv_cursor+2];
+				memcpy(&pulse_mark, &recv_buffer[recv_cursor+2],4);
+				d_pulse_end[GETHIGH(recv_buffer[recv_cursor+1])] = millis() + pulse_mark;
 				digitalWrite(GETHIGH(recv_buffer[recv_cursor+1]+D_IO_PIN_START),~(digital_out_mode&(0x01<<(GETHIGH(recv_buffer[recv_cursor+1])))));
+				Serial.print("Pin on: ");
+				Serial.println(pulse_mark);
+
 				break;
 			case EEPROM_SET:
 				eeprom_seting = 0;
@@ -633,10 +637,11 @@ void handle_digital_pulses()
 	pulse_mark = millis();
 	for (i3 = 0; i3 < D_IO_COUNT; i3++)
 	{
-		if ((!d_pulse_end[i3]) && (d_pulse_end[i3] < pulse_mark))
+		if ((d_pulse_end[i3]) && (d_pulse_end[i3] < pulse_mark))
 		{
 			digitalWrite(i3+D_IO_PIN_START,(digital_out_mode&(0x01<<i3)));
 			d_pulse_end[i3] = 0;
+			Serial.println("Pin off");
 		}
 	}
 }
